@@ -1,0 +1,167 @@
+import os
+import pickle
+import shutil
+import argparse
+from tensorboardX import SummaryWriter
+
+from explain import explain
+import utils.io_utils as io_utils
+
+
+def arg_parse():
+    parser = argparse.ArgumentParser(description='Arguments for SEAL Explainer')
+    # io settings
+    parser.add_argument('--ckptdir', dest='ckptdir',
+            help='Model checkpoint directory')
+    parser.add_argument('--data-name', 
+            help='Network name')
+    parser.add_argument('--name-suffix', dest='name_suffix',
+            help='Suffix added to filename')
+    parser.add_argument('--isbest', dest='isbest', action='store_const',
+            const=True, default=False, 
+            help='Whether the checkpoint is best')
+    parser.add_argument('--train-num-epochs', dest='train_num_epochs', type=int,
+            help='Number of epochs for the checkpoint')
+    parser.add_argument('--logdir', dest='logdir',
+            help='Tensorboard log directory')
+    parser.add_argument('--explainer-suffix', dest='explainer_suffix',
+            help='Suffix added to the explainer log')
+    parser.add_argument('--no-writer', dest='writer', action='store_const',
+            const=False, default=True,
+            help='Whether to add writer. Default to True')
+    # general train settings
+    parser.add_argument('--cuda', dest='cuda',
+            help='CUDA.')
+    parser.add_argument('--gpu', dest='gpu', action='store_const',
+            const=True, default=False,
+            help='Whether to use GPU')
+    parser.add_argument('--num-epochs', dest='num_epochs', type=int,
+            help='Number of epochs to train')
+    parser.add_argument('--hidden-dim', dest='hidden_dim', type=int,
+            help='Hidden dimension')
+    parser.add_argument('--output-dim', dest='output_dim', type=int,
+            help='Output dimension')
+    parser.add_argument('--num-gc-layers', dest='num_gc_layers', type=int,
+            help='Number of graph convolution layers before each pooling')
+    parser.add_argument('--bn', dest='bn', action='store_const',
+            const=True, default=False,
+            help='Whether batch normalization is used')
+    parser.add_argument('--dropout', dest='dropout', type=float,
+            help='Dropout rate')
+    # specific explain settings
+    parser.add_argument('--mask-act', dest='mask_act', type=str,
+            help='sigmoid, ReLU')
+    parser.add_argument('--mask-bias', dest='mask_bias', action='store_const',
+            const=True, default=False,
+            help='Whether to add bias. Default to True.')
+    parser.add_argument('--graph-idx', dest='graph_idx', type=int,
+            help='Graph to explain')
+    parser.add_argument('--multigraph-class', dest='multigraph_class', type=int,
+            help='Whether to run Explainer on multiple Graphs from the Classification task for examples in the same class')
+    parser.add_argument('--graph-indices', dest='graph_indices',
+            help='Graphs to explain')
+    # optimizaion
+    opt_parser = parser.add_argument_group()
+    opt_parser.add_argument('--opt', dest='opt', type=str,
+            help='Type of optimizer')
+    opt_parser.add_argument('--opt-scheduler', dest='opt_scheduler', type=str,
+            help='Type of optimizer scheduler (by default none)')
+    opt_parser.add_argument('--opt-decay-step', dest='opt_decay_step', type=int,
+            help='Number of epochs before decay')
+    opt_parser.add_argument('--opt-decay-rate', dest='opt_decay_rate', type=float,
+            help='Learning rate decay ratio')
+    opt_parser.add_argument('--opt-restart', dest='opt_restart', type=int,
+            help='Number of epochs before restart (by default set to 0 which means no restart)')
+    opt_parser.add_argument('--lr', dest='lr', type=float,
+            help='Learning rate')
+    # defaults
+    parser.set_defaults(ckptdir='ckpt',    # io settings
+                        data_name='dbac',
+                        name_suffix='',
+                        isbest=False,
+                        train_num_epochs=50,
+                        logdir='log',
+                        explainer_suffix='',
+                        cuda='0',    # general train settings
+                        num_epochs=500,
+                        hidden_dim=20,
+                        output_dim=20,
+                        num_gc_layers=3,
+                        dropout=0.0,
+                        mask_act='sigmoid',    # specific explain settings
+                        graph_idx=-1,
+                        multigraph_class=-1,
+                        graph_indices=[],
+                        opt='adam',    # optimization
+                        opt_scheduler='none',
+                        lr=0.1
+                       )
+    return parser.parse_args()
+
+
+def main():
+    # args
+    prog_args = arg_parse()
+
+    if prog_args.gpu:
+        os.environ['CUDA_VISIBLE_DEVICES'] = prog_args.cuda
+        print('CUDA', prog_args.cuda)
+    else:
+        print('Using CPU')
+
+    if prog_args.writer:
+        path = os.path.join(prog_args.logdir, io_utils.gen_explainer_prefix(prog_args))
+        # if os.path.isdir(path):
+        #     print('Remove existing log dir: ', path)
+        #     shutil.rmtree(path)
+        writer = SummaryWriter(path)
+    else:
+        writer = None
+
+    ckpt = io_utils.load_ckpt(prog_args, prog_args.isbest, prog_args.train_num_epochs)
+    cg_dict = ckpt['cg']
+    input_dim = cg_dict['feat'].shape[2]
+    num_classes = cg_dict['pred'].shape[2]
+    print('input dim:', input_dim, '; num classes:', num_classes)
+
+    # build model
+    model = ckpt['model']
+    if prog_args.gpu:
+        model = model.cuda()
+    model.load_state_dict(ckpt['model_state'])
+
+    # build explainer
+    explainer = explain.Explainer(model, cg_dict['adj'], cg_dict['feat'],
+                                  cg_dict['label'], cg_dict['pred'], cg_dict['train_idx'],
+                                  prog_args, writer=writer, print_training=True, graph_mode=True, 
+                                  graph_idx=prog_args.graph_idx)
+
+    # explain graph classification
+    if prog_args.graph_idx != -1:
+        # explain a single graph
+        masked_adj = explainer.explain(graph_idx=prog_args.graph_idx, graph_mode=True)             
+    elif prog_args.multigraph_class >= 0:
+        # only run for graphs with label specified by multigraph_class
+        print(cg_dict['label'])
+        labels = cg_dict['label'].numpy()
+        graph_indices = []
+        for i, l in enumerate(labels):
+            if l == prog_args.multigraph_class:
+                graph_indices.append(i)
+            if len(graph_indices) > 30:
+                break
+        print('Graph indices for label', prog_args.multigraph_class, ':', graph_indices)
+        masked_adjs = explainer.explain_graphs(graph_indices=graph_indices)
+    else:
+        # explain a customized set of indices
+        if prog_args.graph_indices == []:
+                prog_args.graph_indices = range(cg_dict['label'].shape)
+        masked_adjs = explainer.explain_graphs(graph_indices=prog_args.graph_indices)
+    
+    # save masked_adj(s)
+    filename = 'masked_adj.pkl' if prog_args.graph_idx != -1 else 'masked_adjs.pkl'
+    pickle.dump(masked_adjs, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
+
+
+if __name__ == "__main__":
+    main()
