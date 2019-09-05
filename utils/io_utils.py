@@ -7,56 +7,54 @@ import torch
 import networkx as nx
 import tensorboardX
 
+
 def gen_prefix(args):
     name = args.data_name
-    name += '_h' + str(args.hidden_dim) + '_o' + str(args.output_dim)
     if len(args.name_suffix) > 0:
         name += '_' + args.name_suffix
     return name
 
+
 def gen_explainer_prefix(args):
     name = gen_prefix(args)
-    if args.isbest:
-        name += '_best'
-    elif args.train_num_epochs > 0:
+    if args.train_num_epochs > 0:
         name += '_e' + str(args.train_num_epochs)
     name += '_explain' 
     if len(args.explainer_suffix) > 0:
         name += '_' + args.explainer_suffix
     return name
 
-def create_filename(save_dir, args, isbest=False, num_epochs=-1):
+
+def create_filename(save_dir, args, num_epochs=-1):
     '''  create checkpoint name
-    Args:
+    Args: 
         args: the arguments parsed in the parser
-        isbest: whether the saved model is the best-performing one
-        num_epochs: epoch number of the model (when isbest=False)
+        num_epochs: epoch number of the model
     '''
     os.makedirs(save_dir, exist_ok=True)
     filename = os.path.join(save_dir, gen_prefix(args))
 
-    if isbest:
-        filename += '_best'
-    elif num_epochs > 0:
+    if num_epochs > 0:
         filename += '_e' + str(num_epochs)
 
     return filename + '.pth.tar'
 
-def save_checkpoint(args, model, cg_dict, isbest=False):
-    filename = create_filename(args.ckptdir, args, isbest, args.num_epochs)
-    torch.save({'model': model,
+
+def save_checkpoint(args, model, cg_dict):
+    filename = create_filename(args.ckptdir, args, args.num_epochs)
+    torch.save({'args': args,
                 'model_state': model.state_dict(),
                 'cg': cg_dict}, 
                filename)
 
-def load_ckpt(args, isbest=False, num_epochs=-1):
-    print('loading model')
-    filename = create_filename(args.ckptdir, args, isbest, num_epochs)
-    print(filename)
+
+def load_ckpt(args, num_epochs=-1):
+    filename = create_filename(args.ckptdir, args, num_epochs)
     if os.path.isfile(filename):
         print("=> loading checkpoint '{}'".format(filename))
         ckpt = torch.load(filename)
     return ckpt
+
 
 def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     plt.switch_backend('agg')
@@ -72,13 +70,14 @@ def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     fig.canvas.draw()
     writer.add_image(name, tensorboardX.utils.figure_to_image(fig), epoch)
 
+
 def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1, threshold_num=None,
         max_component=True):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
     G.node[node_idx]['self'] = 1
-    # print('num nodes : ', G.number_of_nodes())
+    
     if feat is not None:
         for node in G.nodes():
             G.node[node]['feat'] = feat[node]
@@ -102,6 +101,7 @@ def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1, threshold
         # remove zero degree nodes
         G.remove_nodes_from(list(nx.isolates(G)))
     return G
+
 
 def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1, fig_size=(4,3),
         dpi=300, label_node_feat=False, edge_vmax=None, args=None):
@@ -138,7 +138,6 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
         elif nodecolor == 'label' and 'label' in Gc.node[i]:
             node_colors.append(Gc.node[i]['label'] + 1)
         elif nodecolor == 'feat' and 'feat' in Gc.node[i]:
-            # print(Gc.node[i]['feat'])
             feat = Gc.node[i]['feat'].detach().numpy()
             # idx with pos val in 1D array
             feat_class = 0
@@ -160,9 +159,7 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
         raise Exception('empty graph')
     if Gc.number_of_edges() == 0:
         raise Exception('empty edge')
-    # remove_nodes = []
-    # for u in Gc.nodes():
-    #     if Gc
+
     pos_layout = nx.kamada_kawai_layout(Gc)
     # pos_layout = nx.spring_layout(Gc)
 
@@ -191,6 +188,7 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
 
     img = tensorboardX.utils.figure_to_image(fig)
     writer.add_image(name, img, epoch)
+
 
 def plot_cmap(cmap, ncolor):
     """ 
@@ -221,13 +219,15 @@ def plot_cmap(cmap, ncolor):
         
     return fig
 
+
 def plot_cmap_tb(writer, cmap, ncolor, name):
     fig = plot_cmap(cmap, ncolor)
     img = tensorboardX.utils.figure_to_image(fig)
     writer.add_image(name, img, 0)
+
  
 def sparse_mx_to_torch_sparse_tensor(sparse_mx):
-    """Convert a scipy sparse matrix to a torch sparse tensor."""
+    """Convert a scipy sparse matrix to a torch sparse tensor"""
     sparse_mx = sparse_mx.tocoo().astype(np.float32)
     indices = torch.from_numpy(
             np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))

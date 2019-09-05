@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import scipy.io as sio
 import scipy.sparse as ssp
+
 from dgcnn.models import *
 from utils.train_utils import *
 from utils.io_utils import save_checkpoint
@@ -20,12 +21,14 @@ def args_parse():
     parser.add_argument('--logdir', dest='logdir', help='Tensorboard log directory')
     parser.add_argument('--ckptdir', dest='ckptdir', help='Model checkpoint directory')
     # settings for stage 1 and 2
+    parser.add_argument('--symmetric', action='store_true', default=False, help='whether to check net symmetry (for small nets only)')
     parser.add_argument('--max-train-num', type=int, help='set maximum number of train links (to fit into memory)')
     parser.add_argument('--test-ratio', type=float, help='ratio of test links')
     parser.add_argument('--hop', metavar='S', help='enclosing subgraph hop number, options: 1, 2,..., "auto"')
     parser.add_argument('--max-nodes-per-hop', help='if > 0, upper bound the # nodes per hop by subsampling')
     parser.add_argument('--use-embedding', action='store_true', default=False, help='whether to use node2vec node embeddings')
     parser.add_argument('--use-attribute', action='store_true', default=False, help='whether to use node attributes')
+    parser.add_argument('--parallel', action='store_true', default=False, help='whether to extract subgraphs in parallel')
     # DGCNN configurations (primary)
     cmd_args = parser.add_argument_group(description='Arguments for DGCNN')
     cmd_args.add_argument('--mode', help='cpu/gpu')
@@ -176,7 +179,7 @@ def main():
             for i in range(iden.shape[0]):
                 iden[i,0] = iden[i,0] - 1
                 iden[i,1] = iden[i,1] - 1
-        if False:
+        if args.symmetric:
         # check whether net is symmetric (for small nets only)
             net_ = net.toarray()
             assert(np.allclose(net_, net_.T, atol=1e-8))
@@ -212,8 +215,9 @@ def main():
             node_information = np.concatenate([node_information, attributes], axis=1)
         else:
             node_information = attributes
+    
     # enclosing subgraph extraction
-    train_graphs, test_graphs, max_n_label = links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, args.hop, args.max_nodes_per_hop, node_information)
+    train_graphs, test_graphs, max_n_label = links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, args.hop, args.max_nodes_per_hop, node_information, args.parallel)
     print('#train: %d, #test: %d' % (len(train_graphs), len(test_graphs)))
 
     '''stage 3: GNN Learning'''
@@ -235,12 +239,12 @@ def main():
     scheduler, optimizer = build_optimizer(args, classifier.parameters())
 
     # train and test
-    train_idxes = list(range(len(train_graphs)))
+    train_idx = list(range(len(train_graphs)))
     best_loss = None
     for epoch in range(args.num_epochs):
-        random.shuffle(train_idxes)
+        random.shuffle(train_idx)
         classifier.train()
-        avg_loss = loop_dataset(train_graphs, classifier, train_idxes, args.batch_size, optimizer=optimizer, scheduler=scheduler)
+        avg_loss = loop_dataset(train_graphs, classifier, train_idx, args.batch_size, optimizer=optimizer, scheduler=scheduler)
         if not args.printAUC:
             avg_loss[2] = 0.0
         print('\033[92maverage training of epoch %d: loss %.5f acc %.5f auc %.5f\033[0m' % (epoch, avg_loss[0], avg_loss[1], avg_loss[2]))
@@ -261,12 +265,13 @@ def main():
             f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[2])+'\n')
 
     # save checkpoint
-    adj = train_graphs + test_graphs
-    cg_dict = { 'adj': adj,
-                'feat': 0,
-                'label': [graph.label for graph in adj],
-                'pred': 0, 
-                'train_idx': train_idxes}
+    graphs = train_graphs + test_graphs
+    logits, _, _ = classifier(graphs)
+    pred = np.expand_dims(logits.data.numpy(), axis=0)
+    cg_dict = { 'graph': graphs,
+                'label': [graph.label for graph in graphs],
+                'pred': pred,
+                'train_idx': train_idx}
     save_checkpoint(args, classifier, cg_dict)
 
 

@@ -1,9 +1,9 @@
 import os
 import pickle
-import shutil
 import argparse
 from tensorboardX import SummaryWriter
 
+from dgcnn import models
 from explain import explain
 import utils.io_utils as io_utils
 
@@ -17,9 +17,6 @@ def arg_parse():
             help='Network name')
     parser.add_argument('--name-suffix', dest='name_suffix',
             help='Suffix added to filename')
-    parser.add_argument('--isbest', dest='isbest', action='store_const',
-            const=True, default=False, 
-            help='Whether the checkpoint is best')
     parser.add_argument('--train-num-epochs', dest='train_num_epochs', type=int,
             help='Number of epochs for the checkpoint')
     parser.add_argument('--logdir', dest='logdir',
@@ -29,26 +26,14 @@ def arg_parse():
     parser.add_argument('--no-writer', dest='writer', action='store_const',
             const=False, default=True,
             help='Whether to add writer. Default to True')
-    # general train settings
+    # explain settings
     parser.add_argument('--cuda', dest='cuda',
-            help='CUDA.')
+            help='CUDA_VISIBLE_DEVICES')
     parser.add_argument('--gpu', dest='gpu', action='store_const',
             const=True, default=False,
             help='Whether to use GPU')
     parser.add_argument('--num-epochs', dest='num_epochs', type=int,
-            help='Number of epochs to train')
-    parser.add_argument('--hidden-dim', dest='hidden_dim', type=int,
-            help='Hidden dimension')
-    parser.add_argument('--output-dim', dest='output_dim', type=int,
-            help='Output dimension')
-    parser.add_argument('--num-gc-layers', dest='num_gc_layers', type=int,
-            help='Number of graph convolution layers before each pooling')
-    parser.add_argument('--bn', dest='bn', action='store_const',
-            const=True, default=False,
-            help='Whether batch normalization is used')
-    parser.add_argument('--dropout', dest='dropout', type=float,
-            help='Dropout rate')
-    # specific explain settings
+            help='Number of epochs to learn for explain')
     parser.add_argument('--mask-act', dest='mask_act', type=str,
             help='sigmoid, ReLU')
     parser.add_argument('--mask-bias', dest='mask_bias', action='store_const',
@@ -78,17 +63,12 @@ def arg_parse():
     parser.set_defaults(ckptdir='ckpt',    # io settings
                         data_name='dbac',
                         name_suffix='',
-                        isbest=False,
                         train_num_epochs=50,
                         logdir='log',
                         explainer_suffix='',
-                        cuda='0',    # general train settings
+                        cuda='0',    # explain settings
                         num_epochs=500,
-                        hidden_dim=20,
-                        output_dim=20,
-                        num_gc_layers=3,
-                        dropout=0.0,
-                        mask_act='sigmoid',    # specific explain settings
+                        mask_act='sigmoid',
                         graph_idx=-1,
                         multigraph_class=-1,
                         graph_indices=[],
@@ -113,19 +93,22 @@ def main():
         path = os.path.join(prog_args.logdir, io_utils.gen_explainer_prefix(prog_args))
         # if os.path.isdir(path):
         #     print('Remove existing log dir: ', path)
+        #     import shutil
         #     shutil.rmtree(path)
         writer = SummaryWriter(path)
     else:
         writer = None
 
-    ckpt = io_utils.load_ckpt(prog_args, prog_args.isbest, prog_args.train_num_epochs)
+    ckpt = io_utils.load_ckpt(prog_args, prog_args.train_num_epochs)
     cg_dict = ckpt['cg']
     input_dim = cg_dict['feat'].shape[2]
     num_classes = cg_dict['pred'].shape[2]
     print('input dim:', input_dim, '; num classes:', num_classes)
 
     # build model
-    model = ckpt['model']
+    model_args = ckpt['args']
+    model_args.mode = 'gpu' if prog_args.gpu else 'cpu'
+    model = models.Classifier(model_args)
     if prog_args.gpu:
         model = model.cuda()
     model.load_state_dict(ckpt['model_state'])
@@ -133,13 +116,12 @@ def main():
     # build explainer
     explainer = explain.Explainer(model, cg_dict['adj'], cg_dict['feat'],
                                   cg_dict['label'], cg_dict['pred'], cg_dict['train_idx'],
-                                  prog_args, writer=writer, print_training=True, graph_mode=True, 
-                                  graph_idx=prog_args.graph_idx)
+                                  prog_args, writer=writer, print_training=True, graph_idx=prog_args.graph_idx)
 
     # explain graph classification
     if prog_args.graph_idx != -1:
         # explain a single graph
-        masked_adj = explainer.explain(graph_idx=prog_args.graph_idx, graph_mode=True)             
+        masked_adj = explainer.explain(graph_idx=prog_args.graph_idx)             
     elif prog_args.multigraph_class >= 0:
         # only run for graphs with label specified by multigraph_class
         print(cg_dict['label'])

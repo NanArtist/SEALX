@@ -1,4 +1,4 @@
-import os, sys
+import sys
 import numpy as np
 import networkx as nx
 import torch
@@ -152,8 +152,6 @@ class DGCNN(nn.Module):
         dense_dim = int((k - 2) / 2 + 1)
         self.dense_dim = (dense_dim - conv1d_kws[1] + 1) * conv1d_channels[1]
 
-        # if num_edge_feats > 0:
-        #     self.w_e2l = nn.Linear(num_edge_feats, num_node_feats)
         if output_dim > 0:
             self.out_params = nn.Linear(self.dense_dim, output_dim)
 
@@ -190,7 +188,6 @@ class DGCNN(nn.Module):
     def sortpooling_embedding(self, node_feat, edge_feat, n2n_sp, e2n_sp, subg_sp, graph_sizes, node_degs):
         ''' if exists edge feature, concatenate to node feature vector '''
         if edge_feat is not None:
-            # input_edge_linear = self.w_e2l(edge_feat)
             input_edge_linear = edge_feat
             e2npool_input = gnn_spmm(e2n_sp, input_edge_linear)
             node_feat = torch.cat([node_feat, e2npool_input], 1)
@@ -302,7 +299,6 @@ class MLPClassifier(nn.Module):
         if y is not None:
             y = Variable(y)
             loss = F.nll_loss(logits, y)
-
             pred = logits.data.max(1, keepdim=True)[1]
             acc = pred.eq(y.data.view_as(pred)).cpu().sum().item() / float(y.size()[0])
             return logits, loss, acc
@@ -311,7 +307,7 @@ class MLPClassifier(nn.Module):
 
 
 class GNNGraph(object):
-    def __init__(self, g, label, node_tags=None, node_features=None):
+    def __init__(self, g, label, node_tags=None, node_features=None, adj=None):
         '''
             g: a networkx graph
             label: an integer graph label
@@ -323,6 +319,7 @@ class GNNGraph(object):
         self.label = label
         self.node_features = node_features  # numpy array (node_num * feature_dim)
         self.degs = list(dict(g.degree).values())
+        self.adj = adj
 
         if len(g.edges()) != 0:
             x, y = zip(*g.edges())
@@ -349,3 +346,11 @@ class GNNGraph(object):
                 self.edge_features.append(edge_features[edge])
                 self.edge_features.append(edge_features[edge])  # add reversed edges
             self.edge_features = np.concatenate(self.edge_features, 0)
+
+    def add_adj_mask():
+        #TODO
+        return None
+    
+    def add_feat_mask():
+        #TODO
+        return None
