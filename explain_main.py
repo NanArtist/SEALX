@@ -25,24 +25,27 @@ def arg_parse():
             help='Suffix added to the explainer log')
     parser.add_argument('--no-writer', dest='writer', action='store_const',
             const=False, default=True,
-            help='Whether to add writer. Default to True')
+            help='Whether to add writer. Default to True.')
+    parser.add_argument('--rm-log', dest='rm_log', action='store_const',
+            const=True, default=False,
+            help='Whether to remove existing log dir. Default to False.')
     # explain settings
     parser.add_argument('--cuda', dest='cuda',
             help='CUDA_VISIBLE_DEVICES')
     parser.add_argument('--gpu', dest='gpu', action='store_const',
             const=True, default=False,
-            help='Whether to use GPU')
+            help='Whether to use GPU. Default to False.')
     parser.add_argument('--num-epochs', dest='num_epochs', type=int,
             help='Number of epochs to learn for explain')
     parser.add_argument('--mask-act', dest='mask_act', type=str,
             help='sigmoid, ReLU')
     parser.add_argument('--mask-bias', dest='mask_bias', action='store_const',
             const=True, default=False,
-            help='Whether to add bias. Default to True.')
+            help='Whether to add bias. Default to False.')
     parser.add_argument('--graph-idx', dest='graph_idx', type=int,
             help='Graph to explain')
     parser.add_argument('--multigraph-class', dest='multigraph_class', type=int,
-            help='Whether to run Explainer on multiple Graphs from the Classification task for examples in the same class')
+            help='Graph class to explain')
     parser.add_argument('--graph-indices', dest='graph_indices',
             help='Graphs to explain')
     # optimizaion
@@ -91,19 +94,18 @@ def main():
 
     if prog_args.writer:
         path = os.path.join(prog_args.logdir, io_utils.gen_explainer_prefix(prog_args))
-        # if os.path.isdir(path):
-        #     print('Remove existing log dir: ', path)
-        #     import shutil
-        #     shutil.rmtree(path)
+        if prog_args.rm_log and os.path.isdir(path):
+            print('Remove existing log dir:', path)
+            import shutil
+            shutil.rmtree(path)
         writer = SummaryWriter(path)
     else:
         writer = None
 
     ckpt = io_utils.load_ckpt(prog_args, prog_args.train_num_epochs)
     cg_dict = ckpt['cg']
-    input_dim = cg_dict['feat'].shape[2]
     num_classes = cg_dict['pred'].shape[2]
-    print('input dim:', input_dim, '; num classes:', num_classes)
+    print('#class:', num_classes)
 
     # build model
     model_args = ckpt['args']
@@ -114,7 +116,7 @@ def main():
     model.load_state_dict(ckpt['model_state'])
 
     # build explainer
-    explainer = explain.Explainer(model, cg_dict['adj'], cg_dict['feat'],
+    explainer = explain.Explainer(model, cg_dict['graph'], cg_dict['adj'], cg_dict['feat'],
                                   cg_dict['label'], cg_dict['pred'], cg_dict['train_idx'],
                                   prog_args, writer=writer, print_training=True, graph_idx=prog_args.graph_idx)
 
@@ -124,7 +126,6 @@ def main():
         masked_adj = explainer.explain(graph_idx=prog_args.graph_idx)             
     elif prog_args.multigraph_class >= 0:
         # only run for graphs with label specified by multigraph_class
-        print(cg_dict['label'])
         labels = cg_dict['label'].numpy()
         graph_indices = []
         for i, l in enumerate(labels):

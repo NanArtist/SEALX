@@ -1,10 +1,9 @@
 from __future__ import print_function
 import numpy as np
 import torch
-from torch.autograd import Variable
-from torch.nn.parameter import Parameter
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+from torch.autograd import Variable
 
 def glorot_uniform(t):
     if len(t.size()) == 2:

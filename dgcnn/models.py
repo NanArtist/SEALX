@@ -307,19 +307,18 @@ class MLPClassifier(nn.Module):
 
 
 class GNNGraph(object):
-    def __init__(self, g, label, node_tags=None, node_features=None, adj=None):
-        '''
-            g: a networkx graph
+    def __init__(self, g, label, node_tags=None, node_features=None):
+        ''' g: a networkx graph
             label: an integer graph label
             node_tags: a list of integer node tags
             node_features: a numpy array of continuous node features
         '''
-        self.num_nodes = len(node_tags)
-        self.node_tags = node_tags
-        self.label = label
-        self.node_features = node_features  # numpy array (node_num * feature_dim)
         self.degs = list(dict(g.degree).values())
-        self.adj = adj
+        self.label = label
+        self.node_tags = node_tags
+        self.num_nodes = len(node_tags)
+        self.node_features = node_features  # numpy array (node_num * feature_dim)
+        self.adj = nx.to_scipy_sparse_matrix(g)
 
         if len(g.edges()) != 0:
             x, y = zip(*g.edges())
@@ -347,10 +346,9 @@ class GNNGraph(object):
                 self.edge_features.append(edge_features[edge])  # add reversed edges
             self.edge_features = np.concatenate(self.edge_features, 0)
 
-    def add_adj_mask():
-        #TODO
-        return None
-    
-    def add_feat_mask():
+    def update(self, masked_adj, masked_x=None):
+        if masked_x is not None:
+            self.node_features = masked_x
+        self.adj = masked_adj
         #TODO
         return None

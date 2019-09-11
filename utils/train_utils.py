@@ -120,9 +120,9 @@ def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, max_nodes_
             g_list = []
             pbar = tqdm(list(zip(links[0], links[1])), ascii=True, ncols=80)
             for i, j in pbar:
-                g, n_labels, n_features, adj = subgraph_extraction_labeling((i, j), A, h, max_nodes_per_hop, node_information)
+                g, n_labels, n_features = subgraph_extraction_labeling((i, j), A, h, max_nodes_per_hop, node_information)
                 max_n_label['value'] = max(max(n_labels), max_n_label['value'])
-                g_list.append(GNNGraph(g, g_label, n_labels, n_features, adj))
+                g_list.append(GNNGraph(g, g_label, n_labels, n_features))
             return g_list
         else:
             # parallel extraction code
@@ -187,7 +187,7 @@ def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None, node_infor
     # remove link between target nodes
     if g.has_edge(0, 1):
         g.remove_edge(0, 1)
-    return g, labels.tolist(), features, subgraph
+    return g, labels.tolist(), features
 
 
 def neighbors(fringe, A):
@@ -205,13 +205,13 @@ def node_label(subgraph):
     K = subgraph.shape[0]
     subgraph_wo0 = subgraph[1:, 1:]
     subgraph_wo1 = subgraph[[0]+list(range(2, K)), :][:, [0]+list(range(2, K))]
-    dist_to_0 = ssp.csgraph.shortest_path(subgraph_wo0, directed=False, unweighted=True)
+    dist_to_0 = ssp.csgraph.shortest_path(subgraph_wo1, directed=False, unweighted=True)
     dist_to_0 = dist_to_0[1:, 0]
-    dist_to_1 = ssp.csgraph.shortest_path(subgraph_wo1, directed=False, unweighted=True)
+    dist_to_1 = ssp.csgraph.shortest_path(subgraph_wo0, directed=False, unweighted=True)
     dist_to_1 = dist_to_1[1:, 0]
     d = (dist_to_0 + dist_to_1).astype(int)
     d_over_2, d_mod_2 = np.divmod(d, 2)
-    labels = 1 + np.minimum(dist_to_0, dist_to_1).astype(int) + d_over_2 * (d_over_2 + d_mod_2 - 1)
+    labels = 1 + np.minimum(dist_to_0, dist_to_1).astype(int) + d_over_2*(d_over_2+d_mod_2-1)
     labels = np.concatenate((np.array([1, 1]), labels))
     labels[np.isinf(labels)] = 0
     labels[labels>1e6] = 0  # set inf labels to 0
