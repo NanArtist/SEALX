@@ -2,10 +2,5 @@
 ckpt/
 data/
 log/
-utils/node2vec/graph/karate.edgelist
-utils/node2vec/emb/karate.emb
-utils/node2vec/README.md
 *.pyc
-*.so
-*.o
 *~
