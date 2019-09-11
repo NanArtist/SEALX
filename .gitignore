@@ -1,6 +1,5 @@
 .vscode/
 ckpt/
-data/
 log/
 *.pyc
 *~
