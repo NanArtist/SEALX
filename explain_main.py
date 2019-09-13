@@ -143,7 +143,8 @@ def main():
     
     # save masked_adj(s)
     filename = 'masked_adj.pkl' if prog_args.graph_idx != -1 else 'masked_adjs.pkl'
-    pickle.dump(masked_adjs, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
+    file_adj = masked_adj if prog_args.graph_idx != -1 else masked_adjs
+    pickle.dump(file_adj, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
 
 
 if __name__ == "__main__":

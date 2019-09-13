@@ -89,22 +89,24 @@ def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1, threshold
         adj += np.random.rand(adj.shape[0],adj.shape[1])*1e-4
         threshold = np.sort(adj[adj>0])[-threshold_num]
     if threshold is not None:
-        weighted_edge_list = [(i, j, adj[i, j]) for i in range(num_nodes) for j in range(num_nodes) if
+        weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
                 adj[i,j] >= threshold]
     else:
-        weighted_edge_list = [(i, j, adj[i, j]) for i in range(num_nodes) for j in range(num_nodes)
-                if adj[i,j] > 1e-6]
+        weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
+                adj[i,j] > 1e-6]
     G.add_weighted_edges_from(weighted_edge_list)
+    
     if max_component:
-        G = max(nx.connected_component_subgraphs(G), key=len) 
+        G = max((G.subgraph(c) for c in nx.connected_components(G)), key=len) 
     else:
         # remove zero degree nodes
         G.remove_nodes_from(list(nx.isolates(G)))
+    
     return G
 
 
 def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1, fig_size=(4,3),
-        dpi=300, label_node_feat=False, edge_vmax=None, args=None):
+        dpi=400, label_node_feat=False, edge_vmax=None, args=None):
     '''
     Args:
         nodecolor: the color of node, can be determined by 'label', or 'feat'. For feat, it needs to
@@ -115,7 +117,6 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
     fig = plt.figure(figsize=fig_size, dpi=dpi)
    
     node_colors = []
-    # edge_colors = [min(max(w, 0.0), 1.0) for (u,v,w) in Gc.edges.data('weight', default=1)]
     edge_colors = [w for (u,v,w) in Gc.edges.data('weight', default=1)]
 
     # maximum value for node color

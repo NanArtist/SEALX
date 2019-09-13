@@ -319,6 +319,7 @@ class GNNGraph(object):
         self.num_nodes = len(node_tags)
         self.node_features = node_features  # numpy array (node_num * feature_dim)
         self.adj = nx.to_scipy_sparse_matrix(g)
+        self.add_mask = False
 
         if len(g.edges()) != 0:
             x, y = zip(*g.edges())
@@ -347,8 +348,7 @@ class GNNGraph(object):
             self.edge_features = np.concatenate(self.edge_features, 0)
 
     def update(self, masked_adj, masked_x=None):
+        self.adj = masked_adj.squeeze()
+        self.add_mask = True
         if masked_x is not None:
-            self.node_features = masked_x
-        self.adj = masked_adj
-        #TODO
-        return None
+            self.node_features = masked_x.squeeze() #FIXME

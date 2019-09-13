@@ -74,9 +74,15 @@ class _gnn_lib(object):
                                 ctypes.cast(idx_list, ctypes.c_void_p),
                                 ctypes.cast(val_list, ctypes.c_void_p))
 
+        add_mask = True if len(graph_list)==1 and graph_list[0].add_mask==True else False 
+        if add_mask:
+            for i in range(n2n_idxes[0].shape[0]):
+                n2n_vals[i] = graph_list[0].adj[n2n_idxes[0][i],n2n_idxes[1][i]]
+
         n2n_sp = torch.sparse.FloatTensor(n2n_idxes, n2n_vals, torch.Size([total_num_nodes, total_num_nodes]))
         e2n_sp = torch.sparse.FloatTensor(e2n_idxes, e2n_vals, torch.Size([total_num_nodes, total_num_edges * 2]))
         subg_sp = torch.sparse.FloatTensor(subg_idxes, subg_vals, torch.Size([len(graph_list), total_num_nodes]))
+        
         return n2n_sp, e2n_sp, subg_sp
 
 dll_path = '%s/build/dll/libgnn.so' % os.path.dirname(os.path.realpath(__file__))
