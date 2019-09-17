@@ -307,12 +307,14 @@ class MLPClassifier(nn.Module):
 
 
 class GNNGraph(object):
-    def __init__(self, g, label, node_tags=None, node_features=None):
-        ''' g: a networkx graph
+    def __init__(self, nodes, g, label, node_tags=None, node_features=None):
+        ''' nodes: indices in net for nodes of g
+            g: a networkx graph
             label: an integer graph label
             node_tags: a list of integer node tags
             node_features: a numpy array of continuous node features
         '''
+        self.nodes = nodes
         self.degs = list(dict(g.degree).values())
         self.label = label
         self.node_tags = node_tags
@@ -351,4 +353,4 @@ class GNNGraph(object):
         self.adj = masked_adj.squeeze()
         self.add_mask = True
         if masked_x is not None:
-            self.node_features = masked_x.squeeze() #FIXME
+            self.node_features = masked_x.squeeze().detach().numpy()

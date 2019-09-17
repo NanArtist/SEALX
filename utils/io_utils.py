@@ -71,13 +71,14 @@ def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     writer.add_image(name, tensorboardX.utils.figure_to_image(fig), epoch)
 
 
-def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1, threshold_num=None,
+def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
         max_component=True):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
-    G.node[node_idx]['self'] = 1
-    
+    G.node[0]['self'] = 1
+    G.node[1]['self'] = 1
+
     if feat is not None:
         for node in G.nodes():
             G.node[node]['feat'] = feat[node]
@@ -105,17 +106,17 @@ def denoise_graph(adj, node_idx, feat=None, label=None, threshold=0.1, threshold
     return G
 
 
-def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1, fig_size=(4,3),
+def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label', fig_size=(4,3),
         dpi=400, label_node_feat=False, edge_vmax=None, args=None):
     '''
     Args:
-        nodecolor: the color of node, can be determined by 'label', or 'feat'. For feat, it needs to
-            be one-hot'
+        nodecolor: the color of node, can be determined by 'label', or 'feat'. 
+        For feat, it needs to be one-hot.
     '''
     cmap = plt.get_cmap('Set1')
     plt.switch_backend('agg')
     fig = plt.figure(figsize=fig_size, dpi=dpi)
-   
+
     node_colors = []
     edge_colors = [w for (u,v,w) in Gc.edges.data('weight', default=1)]
 
@@ -131,7 +132,7 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
                 cmap = plt.get_cmap('tab10')
                 vmax = 9
             break
-      
+    
     feat_labels={}
     for i in Gc.nodes():
         if identify_self and 'self' in Gc.node[i]:
@@ -141,7 +142,6 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
         elif nodecolor == 'feat' and 'feat' in Gc.node[i]:
             feat = Gc.node[i]['feat'].detach().numpy()
             # idx with pos val in 1D array
-            feat_class = 0
             for j in range(len(feat)):
                 if feat[j] == 1:
                     feat_class = j
@@ -164,16 +164,14 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
     pos_layout = nx.kamada_kawai_layout(Gc)
     # pos_layout = nx.spring_layout(Gc)
 
-    weights = [d for (u, v, d) in Gc.edges(data='weight', default=1) ]
+    weights = [d for (u,v,d) in Gc.edges(data='weight', default=1)]
     if edge_vmax is None:
-        edge_vmax = statistics.median_high([d for (u, v, d) in Gc.edges(data='weight', default=1)])
-    edge_vmin = min([d for (u, v, d) in Gc.edges(data='weight', default=1)]) / 1.1
-    nx.draw(Gc, pos=pos_layout, with_labels=False, font_size=4, labels=feat_labels,
-            node_color=node_colors, vmin=0, vmax=vmax, cmap=cmap,
+        edge_vmax = statistics.median_high(weights)
+    edge_vmin = min(weights) / 1.1
+    nx.draw(Gc, pos=pos_layout, with_labels=label_node_feat, labels=feat_labels, font_size=4,
+            node_color=node_colors, cmap=cmap, vmin=0, vmax=vmax, node_size=50,
             edge_color=edge_colors, edge_cmap=plt.get_cmap('Greys'), 
-            edge_vmin=edge_vmin,
-            edge_vmax=edge_vmax,
-            width=1.0, node_size=50,
+            edge_vmin=edge_vmin, edge_vmax=edge_vmax, width=1.0,
             alpha=0.8)
     fig.axes[0].xaxis.set_visible(False)
     fig.canvas.draw()
@@ -189,39 +187,3 @@ def log_graph(writer, Gc, name, identify_self=True, nodecolor='label', epoch=-1,
 
     img = tensorboardX.utils.figure_to_image(fig)
     writer.add_image(name, img, epoch)
-
-
-def plot_cmap(cmap, ncolor):
-    """ 
-    A convenient function to plot colors of a matplotlib cmap
-    Credit goes to http://gvallver.perso.univ-pau.fr/?p=712
-    Args:
-        ncolor (int): number of color to show
-        cmap: a cmap object or a matplotlib color name
-    """
-    if isinstance(cmap, str):
-        name = cmap
-        try:
-            cm = plt.get_cmap(cmap)
-        except ValueError:
-            print("WARNINGS :", cmap, " is not a known colormap")
-            cm = plt.cm.gray
-    else:
-        cm = cmap
-        name = cm.name
- 
-    with matplotlib.rc_context(matplotlib.rcParamsDefault):
-        fig = plt.figure(figsize=(12, 1), frameon=False)
-        ax = fig.add_subplot(111)
-        ax.pcolor(np.linspace(1, ncolor, ncolor).reshape(1, ncolor), cmap=cm)
-        ax.set_title(name)
-        xt = ax.set_xticks([])
-        yt = ax.set_yticks([])
-        
-    return fig
-
-
-def plot_cmap_tb(writer, cmap, ncolor, name):
-    fig = plot_cmap(cmap, ncolor)
-    img = tensorboardX.utils.figure_to_image(fig)
-    writer.add_image(name, img, 0)

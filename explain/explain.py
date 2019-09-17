@@ -8,7 +8,7 @@ from utils.train_utils import build_optimizer
 
 
 class Explainer:
-    def __init__(self, model, graph, adj, feat, label, pred, train_idx, args, writer=None,
+    def __init__(self, model, graph, adj, feat, label, args, writer=None,
             print_training=True, graph_idx=0):
         print('Initializing Explainer')
         self.model = model
@@ -16,8 +16,6 @@ class Explainer:
         self.adj = adj
         self.feat = feat
         self.label = label
-        self.pred = pred
-        self.train_idx = train_idx
         self.args = args
         self.writer = writer
         self.print_training = print_training
@@ -43,9 +41,6 @@ class Explainer:
         sub_label = self.label[graph_idx]
         label = torch.tensor(sub_label, dtype=torch.long)
 
-        pred_label = np.argmax(self.pred[0][graph_idx], axis=0)
-        print('pred label:', pred_label)
-
         explainer = ExplainModule(self.model, graph, adj, x, label, self.args, writer=self.writer, graph_idx=graph_idx)
         if self.args.gpu:
             explainer = explainer.cuda()
@@ -57,7 +52,7 @@ class Explainer:
             explainer.zero_grad()
             explainer.optimizer.zero_grad()
             ypred = explainer(unconstrained=unconstrained)
-            loss = explainer.loss(ypred, pred_label, epoch)
+            loss = explainer.loss(ypred, epoch)
             loss.backward()
 
             explainer.optimizer.step()
@@ -79,18 +74,19 @@ class Explainer:
                     explainer.log_masked_adj(epoch, label=single_subgraph_label)
 
         print('finished training in', time.time()-begin_time)
-        masked_adj = explainer.masked_adj[0].cpu().detach().numpy()*sub_adj.squeeze()
+        masked_adj = explainer.masked_adj[0].cpu().detach().numpy()
         
         if self.args.graph_idx != -1:
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], 0, feat=self.feat[graph_idx],
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=torch.tensor(self.feat[graph_idx]),
                 threshold=None, max_component=False) 
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
-                identify_self=False, nodecolor='feat', args=self.args)
-            G_denoised = io_utils.denoise_graph(masked_adj, 0, threshold_num=20, feat=self.feat[graph_idx], 
-                max_component=False)
-            io_utils.log_graph(self.writer, G_denoised, 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
-                identify_self=False, nodecolor='feat', args=self.args)
-            io_utils.plot_cmap_tb(self.writer, 'tab20', 20, 'tab20_cmap')
+                identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
+            
+            G_denoised = io_utils.denoise_graph(masked_adj, feat=torch.tensor(self.feat[graph_idx]), 
+                 threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+            io_utils.log_graph(self.writer, G_denoised,
+                'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
+                identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
         return masked_adj
 
@@ -101,21 +97,16 @@ class Explainer:
             masked_adj = self.explain(graph_idx=graph_idx)
             masked_adjs.append(masked_adj)
             
-            # import networkx as nx
-            # G_orig = nx.from_numpy_matrix(self.adj[graph_idx].cpu().detach().numpy())
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], 0, feat=self.feat[graph_idx],
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=self.feat[graph_idx],
                 threshold=None, max_component=False)
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
-                identify_self=False, nodecolor='feat', args=self.args)
+                identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
-            G_denoised = io_utils.denoise_graph(masked_adj, 0, threshold_num=20, feat=self.feat[graph_idx],
-                max_component=False)
-            io_utils.log_graph(self.writer, G_denoised, 
+            G_denoised = io_utils.denoise_graph(masked_adj, feat=self.feat[graph_idx], 
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+            io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]), 
-                identify_self=False, nodecolor='feat', args=self.args)
-
-        # plot cmap for graphs' node features
-        io_utils.plot_cmap_tb(self.writer, 'tab20', 20, 'tab20_cmap')
+                identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
         return masked_adjs
 
@@ -222,11 +213,10 @@ class ExplainModule(nn.Module):
             masked_adj += (bias + bias.t()) / 2
         return masked_adj * self.diag_mask
 
-    def loss(self, pred, pred_label, epoch):
+    def loss(self, pred, epoch):
         '''
         Args:
             pred: prediction made by current model
-            pred_label: the label predicted by the original model.
         '''
         # prefix for names
         gidx = 'g'+str(self.graph_idx)+'_' if self.graph_idx!=0 else ''
@@ -237,7 +227,6 @@ class ExplainModule(nn.Module):
             pred_loss = - torch.sum(pred * torch.log(pred))
         else:
             logit = pred[self.label]
-            # logit = pred[pred_label] 
             pred_loss = -torch.log(logit)
 
         # size
@@ -294,6 +283,7 @@ class ExplainModule(nn.Module):
         # use [0] to remove the batch dim
         masked_adj = self.masked_adj[0].cpu().detach().numpy()
         feat = self.x[0] if self.x is not None else None
-        G = io_utils.denoise_graph(masked_adj, 0, feat=feat, threshold=0.2)
-        io_utils.log_graph(self.writer, G, name=gidx+'mask/graph', identify_self=False,
-                nodecolor='feat', epoch=epoch, label_node_feat=True, edge_vmax=None, args=self.args)
+        G = io_utils.denoise_graph(masked_adj, feat=feat, 
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+        io_utils.log_graph(self.writer, G, name=gidx+'mask/graph', epoch=epoch,
+                identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)

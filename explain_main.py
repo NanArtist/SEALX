@@ -42,6 +42,10 @@ def arg_parse():
     parser.add_argument('--mask-bias', dest='mask_bias', action='store_const',
             const=True, default=False,
             help='Whether to add bias. Default to False.')
+    parser.add_argument('--threshold', dest='threshold', type=float,
+            help='Threshold to remain masked edges')
+    parser.add_argument('--threshold-num', dest='threshold_num', type=int,
+            help='Threshold number of masked edges to remain')
     parser.add_argument('--graph-idx', dest='graph_idx', type=int,
             help='Graph to explain')
     parser.add_argument('--multigraph-class', dest='multigraph_class', type=int,
@@ -72,6 +76,8 @@ def arg_parse():
                         cuda='0',    # explain settings
                         num_epochs=500,
                         mask_act='sigmoid',
+                        threshold=0.5,
+                        threshold_num=None,
                         graph_idx=-1,
                         multigraph_class=-1,
                         graph_indices=[],
@@ -104,8 +110,6 @@ def main():
 
     ckpt = io_utils.load_ckpt(prog_args, prog_args.train_num_epochs)
     cg_dict = ckpt['cg']
-    num_classes = cg_dict['pred'].shape[2]
-    print('#class:', num_classes)
 
     # build model
     model_args = ckpt['args']
@@ -116,8 +120,7 @@ def main():
     model.load_state_dict(ckpt['model_state'])
 
     # build explainer
-    explainer = explain.Explainer(model, cg_dict['graph'], cg_dict['adj'], cg_dict['feat'],
-                                  cg_dict['label'], cg_dict['pred'], cg_dict['train_idx'],
+    explainer = explain.Explainer(model, cg_dict['graph'], cg_dict['adj'], cg_dict['feat'], cg_dict['label'],
                                   prog_args, writer=writer, print_training=True, graph_idx=prog_args.graph_idx)
 
     # explain graph classification

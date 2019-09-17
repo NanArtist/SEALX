@@ -175,11 +175,7 @@ def main():
             dbac = data['dbac']
         if 'iden' in data.keys():
         # load vid_entity mapping 
-        # (sparse matrix in scipy is different from that in matlab, while general matrix is equal.)
             iden = data['iden']
-            for i in range(iden.shape[0]):
-                iden[i,0] = iden[i,0] - 1
-                iden[i,1] = iden[i,1] - 1
         if args.symmetric:
         # check whether net is symmetric (for small nets only)
             net_ = net.toarray()
@@ -267,13 +263,10 @@ def main():
 
     # save checkpoint
     graphs = train_graphs + test_graphs
-    logits, _, _ = classifier(graphs)
     cg_dict = { 'graph': graphs,
                 'adj': np.array([graph.adj for graph in graphs]),
                 'feat': np.array([graph.node_features for graph in graphs]),
-                'label': np.array([graph.label for graph in graphs]),
-                'pred': np.expand_dims(logits.data.numpy(), axis=0),
-                'train_idx': train_idx}
+                'label': np.array([graph.label for graph in graphs])}
     save_checkpoint(args, classifier, cg_dict)
 
 
