@@ -61,9 +61,9 @@ class Explainer:
 
             mask_density = explainer.mask_density()
             if self.print_training:
-                print('epoch:', epoch, '; loss:', loss.item(),
-                        '; mask density:', mask_density.item(),
-                        '; pred:', ypred) 
+                print('epoch:', epoch, ';\tloss:', loss.item(),
+                        ';\tmask density:', mask_density.item(),
+                        ';\tpred:', ypred) 
             single_subgraph_label = sub_label.squeeze()
 
             if self.writer is not None:
@@ -72,10 +72,9 @@ class Explainer:
                 if epoch % 25 == 0:
                     explainer.log_mask(epoch)
                     explainer.log_masked_adj(epoch, label=single_subgraph_label)
-
         print('finished training in', time.time()-begin_time)
         masked_adj = explainer.masked_adj[0].cpu().detach().numpy()
-        
+
         if self.args.graph_idx != -1:
             G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=torch.tensor(self.feat[graph_idx]),
                 threshold=None, max_component=False) 
@@ -83,32 +82,34 @@ class Explainer:
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
             
             G_denoised = io_utils.denoise_graph(masked_adj, feat=torch.tensor(self.feat[graph_idx]), 
-                 threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
-        return masked_adj
+        return graph
 
     def explain_graphs(self, graph_indices):
-        masked_adjs = []
+        masked_graphs = []
+        if self.args.graph_indices is not 'ALL':
+            graph_indices = [int(i) for i in graph_indices.split()]
 
         for graph_idx in graph_indices:
-            masked_adj = self.explain(graph_idx=graph_idx)
-            masked_adjs.append(masked_adj)
+            masked_graph = self.explain(graph_idx=graph_idx)
+            masked_graphs.append(masked_graph)
             
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=self.feat[graph_idx],
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=torch.tensor(self.feat[graph_idx]),
                 threshold=None, max_component=False)
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
-            G_denoised = io_utils.denoise_graph(masked_adj, feat=self.feat[graph_idx], 
+            G_denoised = io_utils.denoise_graph(masked_graph.adj.cpu().detach().numpy(), feat=torch.tensor(self.feat[graph_idx]), 
                 threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]), 
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
-        return masked_adjs
+        return masked_graphs
 
 
 class ExplainModule(nn.Module):

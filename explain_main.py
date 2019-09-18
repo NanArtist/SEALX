@@ -80,7 +80,7 @@ def arg_parse():
                         threshold_num=None,
                         graph_idx=-1,
                         multigraph_class=-1,
-                        graph_indices=[],
+                        graph_indices='ALL',
                         opt='adam',    # optimization
                         opt_scheduler='none',
                         lr=0.1
@@ -126,28 +126,30 @@ def main():
     # explain graph classification
     if prog_args.graph_idx != -1:
         # explain a single graph
-        masked_adj = explainer.explain(graph_idx=prog_args.graph_idx)             
+        masked_graph = explainer.explain(graph_idx=prog_args.graph_idx)             
     elif prog_args.multigraph_class >= 0:
         # only run for graphs with label specified by multigraph_class
-        labels = cg_dict['label'].numpy()
         graph_indices = []
-        for i, l in enumerate(labels):
+        for i, l in enumerate(cg_dict['label']):
             if l == prog_args.multigraph_class:
                 graph_indices.append(i)
             if len(graph_indices) > 30:
                 break
         print('Graph indices for label', prog_args.multigraph_class, ':', graph_indices)
-        masked_adjs = explainer.explain_graphs(graph_indices=graph_indices)
+        masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     else:
         # explain a customized set of indices
-        if prog_args.graph_indices == []:
-                prog_args.graph_indices = range(cg_dict['label'].shape)
-        masked_adjs = explainer.explain_graphs(graph_indices=prog_args.graph_indices)
+        if prog_args.graph_indices == 'ALL':
+                graph_indices = range(cg_dict['label'].shape[0])
+        masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     
-    # save masked_adj(s)
-    filename = 'masked_adj.pkl' if prog_args.graph_idx != -1 else 'masked_adjs.pkl'
-    file_adj = masked_adj if prog_args.graph_idx != -1 else masked_adjs
-    pickle.dump(file_adj, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
+    if writer is not None:
+        writer.close()
+
+    # save masked_graph(s)
+    filename = 'masked_graph.pkl' if prog_args.graph_idx != -1 else 'masked_graphs.pkl'
+    file_graph = masked_graph if prog_args.graph_idx != -1 else masked_graphs
+    pickle.dump(file_graph, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
 
 
 if __name__ == "__main__":
