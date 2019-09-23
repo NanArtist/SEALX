@@ -1,4 +1,5 @@
 import os
+import random
 import pickle
 import argparse
 from tensorboardX import SummaryWriter
@@ -80,7 +81,7 @@ def arg_parse():
                         threshold_num=None,
                         graph_idx=-1,
                         multigraph_class=-1,
-                        graph_indices='ALL',
+                        graph_indices='RANDOM30',
                         opt='adam',    # optimization
                         opt_scheduler='none',
                         lr=0.1
@@ -141,8 +142,11 @@ def main():
         # explain a customized set of indices
         if prog_args.graph_indices == 'ALL':
             graph_indices = range(cg_dict['label'].shape[0])
+        elif prog_args.graph_indices == 'RANDOM30':
+            graph_indices = sorted(random.sample(range(cg_dict['label'].shape[0]),30))
         else:
             graph_indices = [int(i) for i in prog_args.graph_indices.split()]
+        print('Graph indices to explain', ':', graph_indices)
         masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     
     if writer is not None:
