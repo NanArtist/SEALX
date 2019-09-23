@@ -23,7 +23,7 @@ class Explainer:
 
     def explain(self, graph_idx=0, unconstrained=False):
         # prefix for filenames
-        gidx = 'g'+str(graph_idx)+'_' if graph_idx!=0 else ''
+        gidx = 'g'+str(graph_idx)+'_'
 
         # index of the query node in the new adj
         graph = self.graph[graph_idx]
@@ -63,26 +63,25 @@ class Explainer:
             if self.print_training:
                 print('epoch:', epoch, ';\tloss:', loss.item(),
                         ';\tmask density:', mask_density.item(),
-                        ';\tpred:', ypred) 
-            single_subgraph_label = sub_label.squeeze()
+                        ';\tpred:', ypred)
 
             if self.writer is not None:
                 self.writer.add_scalar(gidx+'mask/density', mask_density, epoch)
                 self.writer.add_scalar(gidx+'optimization/lr', explainer.optimizer.param_groups[0]['lr'], epoch)
                 if epoch % 25 == 0:
                     explainer.log_mask(epoch)
-                    explainer.log_masked_adj(epoch, label=single_subgraph_label)
+                    explainer.log_masked_adj(epoch)
         print('finished training in', time.time()-begin_time)
         masked_adj = explainer.masked_adj[0].cpu().detach().numpy()
 
         if self.args.graph_idx != -1:
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=torch.tensor(self.feat[graph_idx]),
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=x[0],
                 threshold=None, max_component=False) 
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
             
-            G_denoised = io_utils.denoise_graph(masked_adj, feat=torch.tensor(self.feat[graph_idx]), 
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+            G_denoised = io_utils.denoise_graph(masked_adj, feat=x[0], 
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=False)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
@@ -91,8 +90,6 @@ class Explainer:
 
     def explain_graphs(self, graph_indices):
         masked_graphs = []
-        if self.args.graph_indices is not 'ALL':
-            graph_indices = [int(i) for i in graph_indices.split()]
 
         for graph_idx in graph_indices:
             masked_graph = self.explain(graph_idx=graph_idx)
@@ -104,7 +101,7 @@ class Explainer:
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
             G_denoised = io_utils.denoise_graph(masked_graph.adj.cpu().detach().numpy(), feat=torch.tensor(self.feat[graph_idx]), 
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=False)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]), 
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
@@ -128,7 +125,7 @@ class ExplainModule(nn.Module):
 
         num_nodes = adj.size()[1]
         self.mask, self.mask_bias = self.construct_edge_mask(num_nodes, init_strategy='normal')
-        self.feat_mask = self.construct_feat_mask(x.size(-1), init_strategy='constant') \
+        self.feat_mask = self.construct_feat_mask(num_nodes, x.size(-1), init_strategy='constant', bidim=False) \
             if x is not None else None
         params = [self.mask]
         if self.feat_mask is not None:
@@ -143,7 +140,7 @@ class ExplainModule(nn.Module):
 
         self.scheduler, self.optimizer = build_optimizer(args, params)
 
-        self.coeffs = {'size': 0.005, 'feat_size': 1.0, 'ent': 1.0, 'feat_ent':0.1}
+        self.coeffs = {'pred': 1, 'adj_size': 0.01, 'feat_size': 1.0, 'adj_ent': 1.0, 'feat_ent':1.0}
 
     def construct_edge_mask(self, num_nodes, init_strategy='normal', const_val=1.0):
         mask = nn.Parameter(torch.FloatTensor(num_nodes, num_nodes))
@@ -163,8 +160,8 @@ class ExplainModule(nn.Module):
        
         return mask, mask_bias
 
-    def construct_feat_mask(self, feat_dim, init_strategy='normal'):
-        mask = nn.Parameter(torch.FloatTensor(feat_dim))
+    def construct_feat_mask(self, num_nodes, feat_dim, init_strategy='normal', bidim=True):
+        mask = nn.Parameter(torch.FloatTensor(num_nodes, feat_dim)) if bidim else nn.Parameter(torch.FloatTensor(feat_dim))
         if init_strategy == 'normal':
             std = 0.1
             with torch.no_grad():
@@ -182,6 +179,7 @@ class ExplainModule(nn.Module):
         else:
             self.masked_adj = self._masked_adj()
             x = self.x.cuda() if self.args.gpu else self.x
+            self.masked_x = None
             if mask_features and x is not None:
                 feat_mask = torch.sigmoid(self.feat_mask) if self.use_sigmoid else self.feat_mask
                 marginalize = False
@@ -189,10 +187,10 @@ class ExplainModule(nn.Module):
                     std_tensor = torch.ones_like(x, dtype=torch.float) / 2
                     mean_tensor = torch.zeros_like(x, dtype=torch.float) - x
                     z = torch.normal(mean=mean_tensor, std=std_tensor)
-                    x = x + z * (1 - feat_mask)
+                    self.masked_x = x + z * (1 - feat_mask)
                 else:
-                    x = x * feat_mask
-            self.graph.update(self.masked_adj, x)
+                    self.masked_x = x * feat_mask
+            self.graph.update(self.masked_adj, self.masked_x)
 
         logits, _, _ = self.model([self.graph])
         res = nn.Softmax(dim=0)(logits.data[0]) 
@@ -220,43 +218,39 @@ class ExplainModule(nn.Module):
             pred: prediction made by current model
         '''
         # prefix for names
-        gidx = 'g'+str(self.graph_idx)+'_' if self.graph_idx!=0 else ''
+        gidx = 'g'+str(self.graph_idx)+'_'
 
         # pred
         mi_obj = False
         if mi_obj:
-            pred_loss = - torch.sum(pred * torch.log(pred))
+            pred_loss = self.coeffs['pred'] * (-torch.sum(pred * torch.log(pred))).requires_grad_()
         else:
             logit = pred[self.label]
-            pred_loss = -torch.log(logit)
+            pred_loss = self.coeffs['pred'] * (-torch.log(logit)).requires_grad_()
 
         # size
-        mask = self.mask
-        if self.mask_act == 'sigmoid':
-            mask = torch.sigmoid(self.mask)
-        elif self.mask_act == 'ReLU':
-            mask = nn.ReLU()(self.mask)
-        size_loss = self.coeffs['size'] * torch.sum(mask)
-
-        feat_mask = torch.sigmoid(self.feat_mask) if self.use_sigmoid and self.feat_mask is not None else self.feat_mask
-        feat_size_loss = self.coeffs['feat_size'] * torch.mean(feat_mask) if feat_mask is not None else torch.zeros(1)
+        adj_size_loss = self.coeffs['adj_size'] * torch.sum(self.masked_adj).cpu()
+        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x).cpu() if self.masked_x is not None else torch.zeros(1)
 
         # entropy
-        mask_ent = -mask * torch.log(mask) - (1-mask) * torch.log(1-mask)
-        mask_ent_loss = self.coeffs['ent'] * torch.mean(mask_ent)
+        adj_ent = -self.masked_adj * torch.log(self.masked_adj+(self.masked_adj==0).float()) \
+            -(1-self.masked_adj) * torch.log(1-self.masked_adj+(self.masked_adj==1).float())
+        adj_ent_loss = self.coeffs['adj_ent'] * torch.mean(adj_ent)
 
-        feat_mask_ent = -feat_mask * torch.log(feat_mask) - (1-feat_mask) * torch.log(1-feat_mask) if feat_mask is not None else torch.zeros(1)
-        feat_mask_ent_loss = self.coeffs['feat_ent'] * torch.mean(feat_mask_ent)
+        feat_ent = -self.masked_x * torch.log(self.masked_x+(self.masked_x==0).float()) \
+            -(1-self.masked_x) * torch.log(1-self.masked_x+(self.masked_x==1).float()) if self.masked_x is not None else torch.zeros(1)
+        feat_ent_loss = self.coeffs['feat_ent'] * torch.mean(feat_ent)
 
-        loss = pred_loss + size_loss + feat_size_loss + mask_ent_loss + feat_mask_ent_loss
-        
+        loss = pred_loss + adj_size_loss + feat_size_loss + adj_ent_loss + feat_ent_loss
+
         if self.writer is not None:
-            self.writer.add_scalar(gidx+'optimization/pred_loss', pred_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/size_loss', size_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/feat_size_loss', feat_size_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/mask_ent_loss', mask_ent_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/feat_mask_ent_loss', feat_mask_ent_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/overall_loss', loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/4_pred_loss', pred_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/2_adj_size_loss', adj_size_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/3_feat_size_loss', feat_size_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/5_adj_ent_loss', adj_ent_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/6_feat_ent_loss', feat_ent_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/1_overall_loss', loss, epoch)
+        
         return loss
 
     def mask_density(self):
@@ -266,7 +260,7 @@ class ExplainModule(nn.Module):
 
     def log_mask(self, epoch):
         # prefix for names
-        gidx = 'g'+str(self.graph_idx)+'_' if self.graph_idx!=0 else ''
+        gidx = 'g'+str(self.graph_idx)+'_'
 
         io_utils.log_matrix(self.writer, self.mask, gidx+'mask/mask', epoch, fig_size=(4, 3), dpi=400)
         if self.feat_mask is not None:        
@@ -274,17 +268,19 @@ class ExplainModule(nn.Module):
 
         # use [0] to remove the batch dim
         io_utils.log_matrix(self.writer, self.masked_adj[0], gidx+'mask/adj', epoch, fig_size=(4, 3), dpi=400)
+        if self.masked_x is not None:
+            io_utils.log_matrix(self.writer, self.masked_x[0], gidx+'mask/feat', epoch, fig_size=(4, 3), dpi=400)
         if self.args.mask_bias:
             io_utils.log_matrix(self.writer, self.mask_bias, gidx+'mask/bias', epoch, fig_size=(4, 3), dpi=400)
 
-    def log_masked_adj(self, epoch, label=None):
+    def log_masked_adj(self, epoch):
         # prefix for names
-        gidx = 'g'+str(self.graph_idx)+'_' if self.graph_idx!=0 else ''
+        gidx = 'g'+str(self.graph_idx)+'_'
         
         # use [0] to remove the batch dim
         masked_adj = self.masked_adj[0].cpu().detach().numpy()
         feat = self.x[0] if self.x is not None else None
         G = io_utils.denoise_graph(masked_adj, feat=feat, 
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=True)
+                threshold=self.args.threshold, threshold_num=self.args.threshold_num, max_component=False)
         io_utils.log_graph(self.writer, G, name=gidx+'mask/graph', epoch=epoch,
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)

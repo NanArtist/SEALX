@@ -100,7 +100,7 @@ def main():
 
     if prog_args.writer:
         path = os.path.join(prog_args.logdir, io_utils.gen_explainer_prefix(prog_args))
-        if prog_args.rm_log and os.path.isdir(path):
+        if prog_args.rm_log and os.path.isdir(path) and os.listdir(path):
             print('Remove existing log dir:', path)
             import shutil
             shutil.rmtree(path)
@@ -140,7 +140,9 @@ def main():
     else:
         # explain a customized set of indices
         if prog_args.graph_indices == 'ALL':
-                graph_indices = range(cg_dict['label'].shape[0])
+            graph_indices = range(cg_dict['label'].shape[0])
+        else:
+            graph_indices = [int(i) for i in prog_args.graph_indices.split()]
         masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     
     if writer is not None:
