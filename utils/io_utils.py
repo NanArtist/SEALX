@@ -71,8 +71,7 @@ def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     writer.add_image(name, tensorboardX.utils.figure_to_image(fig), epoch)
 
 
-def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
-        max_component=True):
+def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None, tokey=False, max_component=True):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
@@ -86,15 +85,45 @@ def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
         for node in G.nodes():
             G.node[node]['label'] = label[node] 
 
-    if threshold_num is not None:
-        adj += np.random.rand(adj.shape[0],adj.shape[1])*1e-4
-        threshold = np.sort(adj[adj>0])[-threshold_num]
-    if threshold is not None:
-        weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
-                adj[i,j] >= threshold]
+    if tokey:
+        dFeat=feat.nonzero().data.numpy()
+        dClass0, dMax0, lMax0, dClass1, dMax1, lMax1 = {}, {}, [], {}, {}, []
+        for i in range(2):
+            for node in adj[i].nonzero()[0]:
+                if dFeat[node,1] not in eval('dClass'+str(i)).keys():
+                    eval('dClass'+str(i))[dFeat[node,1]] = [node]
+                else:
+                    eval('dClass'+str(i))[dFeat[node,1]].append(node)
+            for node_class in eval('dClass'+str(i)).keys(): 
+                tmp_array = adj[[i]*len(eval('dClass'+str(i))[node_class]),[eval('dClass'+str(i))[node_class]]]
+                max_val = np.max(tmp_array)
+                eval('lMax'+str(i)).append(max_val)
+                eval('dMax'+str(i))[max_val] = eval('dClass'+str(i))[node_class][np.argmax(tmp_array)]
+        if threshold_num is not None:
+            th0 = np.sort(lMax0)[-threshold_num:]
+            th1 = np.sort(lMax1)[-threshold_num:]
+            ind = np.argmax([sum(th0),sum(th1)])
+            if ind == 1:
+                weighted_edge_list = [(1, dMax1[val], val) for val in th1]
+            else:
+                weighted_edge_list = [(0, dMax0[val], val) for val in th0]
+        elif threshold is not None:
+            sum0 = sum(adj[0,adj[0]>=threshold])
+            sum1 = sum(adj[1,adj[1]>=threshold])
+            ind = np.argmax([sum0,sum1])
+            weighted_edge_list = [(ind, j, adj[ind,j]) for j in range(num_nodes) if adj[ind,j] >= threshold]
+        else:
+            weighted_edge_list = [(0, j, adj[0,j]) for j in range(num_nodes) if adj[0,j] > 1e-6]
     else:
-        weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
-                adj[i,j] > 1e-6]
+        if threshold_num is not None:
+            threshold = np.sort(adj[adj>0])[-threshold_num]
+        if threshold is not None:
+            weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
+                    adj[i,j] >= threshold]
+        else:
+            weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
+                    adj[i,j] > 1e-6]
+
     G.add_weighted_edges_from(weighted_edge_list)
     
     if max_component:
@@ -157,9 +186,11 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     fig = plt.figure(figsize=fig_size, dpi=dpi)
 
     if Gc.number_of_nodes() == 0:
-        raise Exception('empty graph')
+        return None
+        # raise Exception('empty graph')
     if Gc.number_of_edges() == 0:
-        raise Exception('empty edge')
+        return None
+        # raise Exception('empty edge')
 
     pos_layout = nx.kamada_kawai_layout(Gc)
     # pos_layout = nx.spring_layout(Gc)
