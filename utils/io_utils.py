@@ -71,7 +71,7 @@ def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     writer.add_image(name, tensorboardX.utils.figure_to_image(fig), epoch)
 
 
-def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None, tokey=False, max_component=True):
+def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_num=None, tokey=False, max_component=False):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
@@ -86,8 +86,11 @@ def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
             G.node[node]['label'] = label[node] 
 
     if tokey:
+        # dFeat: [[node, node_class],...]; dClass: {node_class:node(s),...}
+        # dMax: {max_val for node_class:node,...}; lMax: [max_val for node_class,...]
+        # th: the threshold_num maximum values in lMax; th_new: remove small values relative to th[-1] 
         dFeat=feat.nonzero().data.numpy()
-        dClass0, dMax0, lMax0, dClass1, dMax1, lMax1 = {}, {}, [], {}, {}, []
+        dClass0, dMax0, lMax0, dClass1, dMax1, lMax1, th_new = {}, {}, [], {}, {}, [], []
         for i in range(2):
             for node in adj[i].nonzero()[0]:
                 if dFeat[node,1] not in eval('dClass'+str(i)).keys():
@@ -100,23 +103,22 @@ def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
                 eval('lMax'+str(i)).append(max_val)
                 eval('dMax'+str(i))[max_val] = eval('dClass'+str(i))[node_class][np.argmax(tmp_array)]
         if threshold_num is not None:
-            th0 = np.sort(lMax0)[-threshold_num:]
-            th1 = np.sort(lMax1)[-threshold_num:]
+            th0, th1 = np.sort(lMax0)[-threshold_num:], np.sort(lMax1)[-threshold_num:]
             ind = np.argmax([sum(th0),sum(th1)])
-            if ind == 1:
-                weighted_edge_list = [(1, dMax1[val], val) for val in th1]
-            else:
-                weighted_edge_list = [(0, dMax0[val], val) for val in th0]
+            dMax, th = eval('dMax'+str(ind)), eval('th'+str(ind))
+            for val in th:
+                if 10*val >= th[-1]:
+                    th_new.append(val)
+            weighted_edge_list = [(ind, dMax[val], val) for val in th_new]
         elif threshold is not None:
-            sum0 = sum(adj[0,adj[0]>=threshold])
-            sum1 = sum(adj[1,adj[1]>=threshold])
+            sum0, sum1 = sum(adj[0,adj[0]>=threshold]), sum(adj[1,adj[1]>=threshold])
             ind = np.argmax([sum0,sum1])
             weighted_edge_list = [(ind, j, adj[ind,j]) for j in range(num_nodes) if adj[ind,j] >= threshold]
         else:
             weighted_edge_list = [(0, j, adj[0,j]) for j in range(num_nodes) if adj[0,j] > 1e-6]
     else:
         if threshold_num is not None:
-            threshold = np.sort(adj[adj>0])[-threshold_num]
+            threshold = np.sort(adj[np.triu(adj>0)])[-threshold_num]
         if threshold is not None:
             weighted_edge_list = [(i, j, adj[i,j]) for i in range(num_nodes) for j in range(num_nodes) if
                     adj[i,j] >= threshold]
@@ -127,7 +129,9 @@ def denoise_graph(adj, feat=None, label=None, threshold=0.1, threshold_num=None,
     G.add_weighted_edges_from(weighted_edge_list)
     
     if max_component:
-        G = max((G.subgraph(c) for c in nx.connected_components(G)), key=len) 
+        def weight(Gc):
+            return sum([d for (u,v,d) in Gc.edges(data='weight')]) if len(Gc)!=1 else 0
+        G = max((G.subgraph(c) for c in nx.connected_components(G)), key=weight)
     else:
         # remove zero degree nodes
         G.remove_nodes_from(list(nx.isolates(G)))
@@ -147,7 +151,7 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     fig = plt.figure(figsize=fig_size, dpi=dpi)
 
     node_colors = []
-    edge_colors = [w for (u,v,w) in Gc.edges.data('weight', default=1)]
+    edge_colors = [w for (u,v,w) in Gc.edges.data('weight')]
 
     # maximum value for node color
     vmax = 8
@@ -172,11 +176,11 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
             feat = Gc.node[i]['feat'].detach().numpy()
             # idx with pos val in 1D array
             for j in range(len(feat)):
-                if feat[j] == 1:
+                if feat[j] != 0:
                     feat_class = j
+                    node_colors.append(feat_class)
+                    feat_labels[i] = feat_class
                     break
-            node_colors.append(feat_class)
-            feat_labels[i] = feat_class
         else:
             node_colors.append(1)
     if not label_node_feat:
@@ -195,7 +199,7 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     pos_layout = nx.kamada_kawai_layout(Gc)
     # pos_layout = nx.spring_layout(Gc)
 
-    weights = [d for (u,v,d) in Gc.edges(data='weight', default=1)]
+    weights = [d for (u,v,d) in Gc.edges(data='weight')]
     if edge_vmax is None:
         edge_vmax = statistics.median_high(weights)
     edge_vmin = min(weights) / 1.1

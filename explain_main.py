@@ -78,7 +78,7 @@ def arg_parse():
                         num_epochs=500,
                         mask_act='sigmoid',
                         threshold_num=None,
-                        threshold=0.5,
+                        threshold=0.1,
                         graph_idx=-1,
                         multigraph_class=-1,
                         graph_indices='RANDOM30',
