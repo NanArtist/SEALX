@@ -112,7 +112,7 @@ class Explainer:
 
 
 class ExplainModule(nn.Module):
-    def __init__(self, model, graph, adj, x, label, args, writer=None, graph_idx=0, use_sigmoid=True):
+    def __init__(self, model, graph, adj, x, label, args, writer=None, graph_idx=0, use_sigmoid=True):   
         super(ExplainModule, self).__init__()
         self.model = model
         self.graph = graph
@@ -142,7 +142,7 @@ class ExplainModule(nn.Module):
 
         self.scheduler, self.optimizer = build_optimizer(args, params)
 
-        self.coeffs = {'pred': 1, 'adj_size': 0.005, 'feat_size': 1.0, 'adj_ent': 1.0, 'feat_ent':1.0}
+        self.coeffs = {'pred': 1, 'adj_size': 1, 'feat_size': 1, 'adj_ent': 1, 'feat_ent': 1}
 
     def construct_edge_mask(self, num_nodes, init_strategy='normal', const_val=1.0):
         mask = nn.Parameter(torch.FloatTensor(num_nodes, num_nodes))
@@ -230,10 +230,6 @@ class ExplainModule(nn.Module):
             logit = pred[self.label]
             pred_loss = self.coeffs['pred'] * (-torch.log(logit)).requires_grad_()
 
-        # size
-        adj_size_loss = self.coeffs['adj_size'] * torch.sum(self.masked_adj).cpu()
-        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x).cpu() if self.masked_x is not None else torch.zeros(1)
-
         # entropy
         adj_ent = -self.masked_adj * torch.log(self.masked_adj+(self.masked_adj==0).float()) \
             -(1-self.masked_adj) * torch.log(1-self.masked_adj+(self.masked_adj==1).float())
@@ -243,15 +239,19 @@ class ExplainModule(nn.Module):
             -(1-self.masked_x) * torch.log(1-self.masked_x+(self.masked_x==1).float()) if self.masked_x is not None else torch.zeros(1)
         feat_ent_loss = self.coeffs['feat_ent'] * torch.mean(feat_ent)
 
-        loss = pred_loss + adj_size_loss + feat_size_loss + adj_ent_loss + feat_ent_loss
+        # size
+        adj_size_loss = self.coeffs['adj_size'] * torch.mean(self.masked_adj).cpu()
+        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x).cpu() if self.masked_x is not None else torch.zeros(1)
+
+        loss = pred_loss + adj_ent_loss + feat_ent_loss + adj_size_loss + feat_size_loss
 
         if self.writer is not None:
-            self.writer.add_scalar(gidx+'optimization/4_pred_loss', pred_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/1_overall_loss', loss, epoch)
             self.writer.add_scalar(gidx+'optimization/2_adj_size_loss', adj_size_loss, epoch)
             self.writer.add_scalar(gidx+'optimization/3_feat_size_loss', feat_size_loss, epoch)
+            self.writer.add_scalar(gidx+'optimization/4_pred_loss', pred_loss, epoch)
             self.writer.add_scalar(gidx+'optimization/5_adj_ent_loss', adj_ent_loss, epoch)
             self.writer.add_scalar(gidx+'optimization/6_feat_ent_loss', feat_ent_loss, epoch)
-            self.writer.add_scalar(gidx+'optimization/1_overall_loss', loss, epoch)
         
         return loss
 
