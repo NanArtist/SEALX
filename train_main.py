@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import scipy.io as sio
 import scipy.sparse as ssp
-
+from tqdm import tqdm
 from dgcnn.models import *
 from utils.train_utils import *
 from utils.io_utils import save_checkpoint
@@ -170,9 +170,9 @@ def main():
             attributes = data['group'].toarray().astype('float32')
         else:
             attributes = None
-        if 'dbac' in data.keys():
+        if 'match' in data.keys():
         # load same_as links
-            dbac = data['dbac']
+            match = data['match']
         if 'iden' in data.keys():
         # load vid_entity mapping 
             iden = data['iden']
@@ -180,9 +180,8 @@ def main():
         # check whether net is symmetric (for small nets only)
             net_ = net.toarray()
             assert(np.allclose(net_, net_.T, atol=1e-8))
-        train_pos, train_neg, test_pos, test_neg = sample_neg(mat=dbac, test_ratio=args.test_ratio, max_train_num=args.max_train_num)
-        if args.data_name == 'dbac':
-            train_pos, train_neg, test_pos, test_neg = entity2vid(train_pos, iden), entity2vid(train_neg, iden), entity2vid(test_pos, iden), entity2vid(test_neg, iden)
+        train_pos, train_neg, test_pos, test_neg = sample_neg(mat=match, test_ratio=args.test_ratio, max_train_num=args.max_train_num)
+        train_pos, train_neg, test_pos, test_neg = entity2vid(train_pos, iden), entity2vid(train_neg, iden), entity2vid(test_pos, iden), entity2vid(test_neg, iden)
         verify_sample(net, train_pos, train_neg, test_pos, test_neg)
     else:
         args.train_dir = os.path.join(args.file_dir, 'data/{}'.format(args.train_name))
@@ -255,11 +254,11 @@ def main():
     # save evaluation results
     os.makedirs(args.logdir+'/train', exist_ok=True)
     with open(args.logdir+'/train/acc_results.txt', 'a+') as f:
-        f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[1])+'\n')
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[1])+'\t'+args.name_suffix+'\n')
 
     if args.printAUC:
         with open(args.logdir+'/train/auc_results.txt', 'a+') as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[2])+'\n')
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[2])+'\t'+args.name_suffix+'\n')
 
     # save checkpoint
     graphs = train_graphs + test_graphs
