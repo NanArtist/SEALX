@@ -85,7 +85,7 @@ def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_num=None
         for node in G.nodes():
             G.node[node]['label'] = label[node] 
 
-    if tokey:
+    if tokey and feat is not None:
         # dFeat: [[node, node_class],...]; dClass: {node_class:node(s),...}
         # dMax: {max_val for node_class:node,...}; lMax: [max_val for node_class,...]
         # th: the threshold_num maximum values in lMax; th_new: remove small values relative to th[-1] 

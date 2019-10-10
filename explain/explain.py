@@ -75,11 +75,13 @@ class Explainer:
         print('finished training in', time.time()-begin_time)
 
         if self.args.graph_idx != -1:
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=x[0])
+            feat = x[0] if x is not None else None
+
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=feat)
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
             
-            G_denoised = io_utils.denoise_graph(graph.adj.cpu().detach().numpy(), feat=x[0], 
+            G_denoised = io_utils.denoise_graph(graph.adj.cpu().detach().numpy(), feat=feat, 
                 threshold=self.args.threshold, threshold_num=self.args.threshold_num, tokey=True, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
@@ -94,12 +96,13 @@ class Explainer:
 
         for graph_idx in graph_indices:
             masked_graph = self.explain(graph_idx=graph_idx)
+            feat = torch.tensor(self.feat[graph_idx]) if self.feat[graph_idx] is not None else None
             
-            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=torch.tensor(self.feat[graph_idx]))
+            G_orig = io_utils.denoise_graph(self.adj[graph_idx], feat=feat)
             io_utils.log_graph(self.writer, G_orig, 'explain/gidx_{}'.format(graph_idx),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
-            G_denoised = io_utils.denoise_graph(masked_graph.adj.cpu().detach().numpy(), feat=torch.tensor(self.feat[graph_idx]), 
+            G_denoised = io_utils.denoise_graph(masked_graph.adj.cpu().detach().numpy(), feat=feat, 
                 threshold=self.args.threshold, threshold_num=self.args.threshold_num, tokey=True, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]), 

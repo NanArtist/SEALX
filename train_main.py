@@ -26,7 +26,7 @@ def args_parse():
     parser.add_argument('--test-ratio', type=float, help='ratio of test links')
     parser.add_argument('--hop', metavar='S', help='enclosing subgraph hop number, options: 1, 2,..., "auto"')
     parser.add_argument('--max-nodes-per-hop', help='if > 0, upper bound the # nodes per hop by subsampling')
-    parser.add_argument('--use-embedding', action='store_true', default=False, help='whether to use node2vec node embeddings')
+    parser.add_argument('--use-embedding', help='how to use embeddings, option: None, "node2vec", "word2vec"')
     parser.add_argument('--use-attribute', action='store_true', default=False, help='whether to use node attributes')
     parser.add_argument('--parallel', action='store_true', default=False, help='whether to extract subgraphs in parallel')
     # DGCNN configurations (primary)
@@ -35,7 +35,8 @@ def args_parse():
     cmd_args.add_argument('--gm', help='gnn model to use')
     cmd_args.add_argument('--feat-dim', type=int, help='dimension of discrete node feature (maximum node tag)')
     cmd_args.add_argument('--edge-feat-dim', type=int, help='dimension of edge features')
-    cmd_args.add_argument('--attr-dim', type=int, help='dimension(s) of node attributes')
+    cmd_args.add_argument('--embed-dim', type=int, help='dimension of node embeddings')
+    cmd_args.add_argument('--attr-dim', type=int, help='dimension of node attributes')
     cmd_args.add_argument('--num-class', type=int, help='#classes')
     cmd_args.add_argument('--num-epochs', type=int, help='number of epochs')
     cmd_args.add_argument('--batch-size', type=int, help='minibatch size')
@@ -66,10 +67,12 @@ def args_parse():
                         test_ratio=0.1,
                         hop=1,
                         max_nodes_per_hop=None,
+                        use_embedding = None,
                         mode='cpu',  # DGCNN configurations (primary)
                         gm='DGCNN',
                         feat_dim=0,
                         edge_feat_dim=0,
+                        embed_dim = 0,
                         attr_dim = 0,
                         num_class=2,
                         num_epochs=50,
@@ -158,18 +161,12 @@ def main():
     if args.cuda:
         torch.cuda.manual_seed(args.seed)
 
-    ''' stage 1: node information matrix construction
-    and stage 2: enclosing subgraph extraction'''
+    ''' stage 1 and 2: enclosing subgraph extraction, node information matrix construction'''
     # load net and sample train_pos, train_neg, test_pos, test_neg links
     if args.train_name is None:
         args.data_dir = os.path.join(args.file_dir, 'data/{}.mat'.format(args.data_name))
         data = sio.loadmat(args.data_dir)
         net = data['net']
-        if 'group' in data.keys():
-        # load node attributes (here a.k.a. node classes)
-            attributes = data['group'].toarray().astype('float32')
-        else:
-            attributes = None
         if 'match' in data.keys():
         # load same_as links
             match = data['match']
@@ -201,27 +198,30 @@ def main():
     A[test_pos[0], test_pos[1]] = 0  # mask test links
     A[test_pos[1], test_pos[0]] = 0  # mask test links
     
-    # node information matrix construction
-    node_information = None
-    if args.use_embedding:
+    # node information matrix construction: load node embeddings and node attributes (here a.k.a. node classes)
+    if args.use_embedding == 'node2vec':
         embeddings = generate_node2vec_embeddings(A, 128, True, train_neg)
-        node_information = embeddings
-    if args.use_attribute and attributes is not None:
-        if node_information is not None:
-            node_information = np.concatenate([node_information, attributes], axis=1)
-        else:
-            node_information = attributes
+    elif args.use_embedding == 'word2vec' and 'w2v' in data.keys():
+        embeddings = data['w2v']
+    else:
+        embeddings = None
+    if args.use_attribute and 'group' in data.keys():
+        attributes = data['group']
+    else:
+        attributes = None
     
     # enclosing subgraph extraction
-    train_graphs, test_graphs, max_n_label = links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, args.hop, args.max_nodes_per_hop, node_information, args.parallel)
+    train_graphs, test_graphs, max_n_label = links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, args.hop, args.max_nodes_per_hop, embeddings, attributes, args.parallel)
     print('#train: %d, #test: %d' % (len(train_graphs), len(test_graphs)))
 
     '''stage 3: GNN Learning'''
     # DGCNN configurations
     args.mode = 'gpu' if args.cuda else 'cpu'
     args.feat_dim = max_n_label + 1
-    if node_information is not None:
-        args.attr_dim = node_information.shape[1]
+    if embeddings is not None:
+        args.embed_dim = embeddings.shape[1]
+    if attributes is not None:
+        args.attr_dim = attributes.shape[1]
     if args.sortpooling_k <= 1:
         num_nodes_list = sorted([g.num_nodes for g in train_graphs+test_graphs])
         args.sortpooling_k = num_nodes_list[int(math.ceil(args.sortpooling_k*len(num_nodes_list)))-1]
@@ -252,19 +252,15 @@ def main():
         print('\033[93maverage test of epoch %d: loss %.5f acc %.5f auc %.5f\033[0m' % (epoch, test_loss[0], test_loss[1], test_loss[2]))
 
     # save evaluation results
-    os.makedirs(args.logdir+'/train', exist_ok=True)
-    with open(args.logdir+'/train/acc_results.txt', 'a+') as f:
-        f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[1])+'\t'+args.name_suffix+'\n')
-
-    if args.printAUC:
-        with open(args.logdir+'/train/auc_results.txt', 'a+') as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[2])+'\t'+args.name_suffix+'\n')
+    os.makedirs(args.logdir+'/SEAL', exist_ok=True)
+    with open(args.logdir+'/SEAL/test_results.txt', 'a+') as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())+'\t'+args.data_name+'\t'+str(test_loss[0])+'\t'+str(test_loss[1])+'\t'+str(test_loss[2])+'\t'+args.name_suffix+'\n')
 
     # save checkpoint
     graphs = train_graphs + test_graphs
     cg_dict = { 'graph': graphs,
                 'adj': np.array([graph.adj for graph in graphs]),
-                'feat': np.array([graph.node_features for graph in graphs]),
+                'feat': np.array([graph.node_attrs for graph in graphs]),
                 'label': np.array([graph.label for graph in graphs])}
     save_checkpoint(args, classifier, cg_dict)
 

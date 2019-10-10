@@ -23,9 +23,9 @@ class Classifier(nn.Module):
         if args.gm == 'DGCNN':
             self.gnn = model(latent_dim=args.latent_dim,
                              output_dim=args.output_dim,
-                             num_node_feats=args.feat_dim+args.attr_dim,
+                             num_node_feats=args.feat_dim+args.embed_dim+args.attr_dim,
                              num_edge_feats=args.edge_feat_dim,
-                             k=args.sortpooling_k, 
+                             k=args.sortpooling_k,
                              conv1d_activation=args.conv1d_activation)
         out_dim = args.output_dim
         if out_dim == 0:
@@ -50,11 +50,17 @@ class Classifier(nn.Module):
         else:
             node_tag_flag = False
 
-        if batch_graph[0].node_features is not None:
-            node_feat_flag = True
-            concat_feat = []
+        if batch_graph[0].node_embeds is not None:
+            node_embed_flag = True
+            concat_embed = []
         else:
-            node_feat_flag = False
+            node_embed_flag = False
+
+        if batch_graph[0].node_attrs is not None:
+            node_attr_flag = True
+            concat_attr = []
+        else:
+            node_attr_flag = False
 
         if self.args.edge_feat_dim > 0:
             edge_feat_flag = True
@@ -67,9 +73,12 @@ class Classifier(nn.Module):
             n_nodes += batch_graph[i].num_nodes
             if node_tag_flag == True:
                 concat_tag += batch_graph[i].node_tags
-            if node_feat_flag == True:
-                tmp = torch.from_numpy(batch_graph[i].node_features).type('torch.FloatTensor')
-                concat_feat.append(tmp)
+            if node_embed_flag == True:
+                tmp = torch.from_numpy(batch_graph[i].node_embeds).type('torch.FloatTensor')
+                concat_embed.append(tmp)
+            if node_attr_flag == True:
+                tmp = torch.from_numpy(batch_graph[i].node_attrs).type('torch.FloatTensor')
+                concat_attr.append(tmp)
             if edge_feat_flag == True:
                 if batch_graph[i].edge_features is not None:  # in case no edge in graph[i]
                     tmp = torch.from_numpy(batch_graph[i].edge_features).type('torch.FloatTensor')
@@ -80,11 +89,25 @@ class Classifier(nn.Module):
             node_tag = torch.zeros(n_nodes, self.args.feat_dim)
             node_tag.scatter_(1, concat_tag, 1)
 
-        if node_feat_flag == True:
-            node_feat = torch.cat(concat_feat, 0)
+        if node_embed_flag == True:
+            node_embed = torch.cat(concat_embed, 0)
+        
+        if node_attr_flag == True:
+            node_attr = torch.cat(concat_attr, 0)
+
+        node_feat_flag = True
+        if node_embed_flag and node_attr_flag:
+            # concatenate embeddings and attributes as continuous node features
+            node_feat = torch.cat((node_embed, node_attr), 1)
+        elif node_embed_flag == True and node_attr_flag == False:
+            node_feat = node_embed
+        elif node_embed_flag == False and node_attr_flag == True:
+            node_feat = node_attr
+        else:
+            node_feat_flag = False
 
         if node_feat_flag and node_tag_flag:
-            # concatenate one-hot embedding of node tags (node labels) with continuous node features
+            # concatenate one-hot embedding of node tags with continuous node features
             node_feat = torch.cat([node_tag.type_as(node_feat), node_feat], 1)
         elif node_feat_flag == False and node_tag_flag == True:
             node_feat = node_tag
@@ -307,19 +330,21 @@ class MLPClassifier(nn.Module):
 
 
 class GNNGraph(object):
-    def __init__(self, nodes, g, label, node_tags=None, node_features=None):
+    def __init__(self, nodes, g, label, node_tags=None, node_embeds=None, node_attrs=None):
         ''' nodes: indices in net for nodes of g
             g: a networkx graph
             label: an integer graph label
             node_tags: a list of integer node tags
-            node_features: a numpy array of continuous node features
+            node_embeds: a numpy array of continuous node embeddings
+            node_attrs: a numpy array of node attributes (here a.k.a. node classes)
         '''
         self.nodes = nodes
         self.degs = list(dict(g.degree).values())
         self.label = label
         self.node_tags = node_tags
         self.num_nodes = len(node_tags)
-        self.node_features = node_features  # numpy array (node_num * feature_dim)
+        self.node_embeds = node_embeds  # numpy array (node_num * embed_dim)
+        self.node_attrs = node_attrs  # numpy array (node_num * attr_dim)
         self.adj = nx.to_scipy_sparse_matrix(g)
         self.add_mask = False
 
@@ -353,4 +378,4 @@ class GNNGraph(object):
         self.adj = masked_adj.squeeze()
         self.add_mask = True
         if masked_x is not None:
-            self.node_features = masked_x.squeeze().detach().numpy()
+            self.node_attrs = masked_x.squeeze().detach().numpy()

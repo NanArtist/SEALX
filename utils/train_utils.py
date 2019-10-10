@@ -93,7 +93,7 @@ def generate_node2vec_embeddings(A, emd_size=128, negative_injection=False, trai
     return embeddings
 
 
-def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, max_nodes_per_hop=None, node_information=None, parallel=False):
+def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, max_nodes_per_hop=None, embeddings=None, attributes=None, parallel=False):
     # automatically select h from {1, 2}
     if h == 'auto':
         # split train into val_train and val_test
@@ -119,15 +119,15 @@ def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, max_nodes_
             g_list = []
             pbar = tqdm(list(zip(links[0], links[1])), ascii=True, ncols=80)
             for i, j in pbar:
-                nodes, g, n_labels, n_features = subgraph_extraction_labeling((i, j), A, h, max_nodes_per_hop, node_information)
+                nodes, g, n_labels, n_embeds, n_attrs = subgraph_extraction_labeling((i, j), A, h, max_nodes_per_hop, embeddings, attributes)
                 max_n_label['value'] = max(max(n_labels), max_n_label['value'])
-                g_list.append(GNNGraph(nodes, g, g_label, n_labels, n_features))
+                g_list.append(GNNGraph(nodes, g, g_label, n_labels, n_embeds, n_attrs))
             return g_list
         else:
             # parallel extraction code
             start = time.time()
             pool = mp.Pool(mp.cpu_count())
-            results = pool.map_async(parallel_worker, [((i, j), A, h, max_nodes_per_hop, node_information) for i, j in zip(links[0], links[1])])
+            results = pool.map_async(parallel_worker, [((i, j), A, h, max_nodes_per_hop, embeddings, attributes) for i, j in zip(links[0], links[1])])
             remaining = results._number_left
             pbar = tqdm(total=remaining, ascii=True, ncols=80)
             while True:
@@ -138,8 +138,8 @@ def links2subgraphs(A, train_pos, train_neg, test_pos, test_neg, h=1, max_nodes_
             results = results.get()
             pool.close()
             pbar.close()
-            g_list = [GNNGraph(nodes, g, g_label, n_labels, n_features) for nodes, g, n_labels, n_features in results]
-            max_n_label['value'] = max(max([max(n_labels) for _, _, n_labels, _ in results]), max_n_label['value'])
+            g_list = [GNNGraph(nodes, g, g_label, n_labels, n_embeds, n_attrs) for nodes, g, n_labels, n_embeds, n_attrs in results]
+            max_n_label['value'] = max(max([max(n_labels) for _, _, n_labels, _, _ in results]), max_n_label['value'])
             end = time.time()
             print("Time eplased for subgraph extraction: {}s".format(end-start))
             return g_list
@@ -154,7 +154,7 @@ def parallel_worker(x):
     return subgraph_extraction_labeling(*x)
 
 
-def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None, node_information=None):
+def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None, embeddings=None, attributes=None):
     # extract the h-hop enclosing subgraph around link 'ind'
     dist = 0
     nodes = set([ind[0], ind[1]])
@@ -178,15 +178,17 @@ def subgraph_extraction_labeling(ind, A, h=1, max_nodes_per_hop=None, node_infor
     # apply node-labeling
     labels = node_label(subgraph)
     # get node features
-    features = None
-    if node_information is not None:
-        features = node_information[nodes]
+    embeds, attrs = None, None
+    if embeddings is not None:
+        embeds = embeddings[nodes]
+    if attributes is not None:
+        attrs = attributes[nodes]
     # construct nx graph
     g = nx.from_scipy_sparse_matrix(subgraph)
     # remove link between target nodes
     if g.has_edge(0, 1):
         g.remove_edge(0, 1)
-    return nodes, g, labels.tolist(), features
+    return nodes, g, labels.tolist(), embeds, attrs
 
 
 def neighbors(fringe, A):

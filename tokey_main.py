@@ -10,6 +10,6 @@ data = pickle.load(open(filename,'rb'))
 graph = data[13]
 adj = graph.adj
 nodes = graph.nodes
-G = denoise_graph(adj.cpu().detach().numpy(), torch.tensor(graph.node_features), 
+G = denoise_graph(adj.cpu().detach().numpy(), torch.tensor(graph.node_attrs), 
         threshold=args.threshold, threshold_num=args.threshold_num, tokey=True, max_component=True)
 log_graph(None, G, '1', identify_self=False, nodecolor='feat', label_node_feat=True, args=args)
