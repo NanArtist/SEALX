@@ -164,7 +164,7 @@ def main():
     ''' stage 1 and 2: enclosing subgraph extraction, node information matrix construction'''
     # load net and sample train_pos, train_neg, test_pos, test_neg links
     if args.train_name is None:
-        args.data_dir = os.path.join(args.file_dir, 'data/{}.mat'.format(args.data_name))
+        args.data_dir = os.path.join(args.file_dir, 'data', args.data_name, '{}.mat'.format(args.data_name))
         data = sio.loadmat(args.data_dir)
         net = data['net']
         if 'match' in data.keys():
