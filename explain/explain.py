@@ -82,7 +82,8 @@ class Explainer:
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
             
             G_denoised = io_utils.denoise_graph(graph.adj.cpu().detach().numpy(), feat=feat, 
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, tokey=True, max_component=True)
+                threshold=self.args.threshold, threshold_ratio=self.args.threshold_ratio, threshold_num=self.args.threshold_num,
+                tokey=True, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
@@ -103,7 +104,8 @@ class Explainer:
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
 
             G_denoised = io_utils.denoise_graph(masked_graph.adj.cpu().detach().numpy(), feat=feat, 
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, tokey=True, max_component=True)
+                threshold=self.args.threshold, threshold_ratio=self.args.threshold_ratio, threshold_num=self.args.threshold_num,
+                tokey=True, max_component=True)
             io_utils.log_graph(self.writer, G_denoised,
                 'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]), 
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
@@ -154,7 +156,7 @@ class ExplainModule(nn.Module):
             with torch.no_grad():
                 mask.normal_(1.0, std)
                 # mask.clamp_(0.0, 1.0)
-        elif init_strategy == 'const':
+        elif init_strategy == 'constant':
             nn.init.constant_(mask, const_val)
 
         if self.args.mask_bias:
@@ -286,6 +288,7 @@ class ExplainModule(nn.Module):
         masked_adj = self.masked_adj[0].cpu().detach().numpy()
         feat = self.x[0] if self.x is not None else None
         G = io_utils.denoise_graph(masked_adj, feat=feat,
-                threshold=self.args.threshold, threshold_num=self.args.threshold_num, tokey=True, max_component=True)
+                threshold=self.args.threshold, threshold_ratio=self.args.threshold_ratio, threshold_num=self.args.threshold_num,
+                tokey=True, max_component=True)
         io_utils.log_graph(self.writer, G, name=gidx+'mask/graph', epoch=epoch,
                 identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)

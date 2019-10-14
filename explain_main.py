@@ -6,7 +6,7 @@ from tensorboardX import SummaryWriter
 
 from dgcnn import models
 from explain import explain
-import utils.io_utils as io_utils
+from utils import io_utils
 
 
 def arg_parse():
@@ -45,6 +45,8 @@ def arg_parse():
             help='Whether to add bias. Default to False.')
     parser.add_argument('--threshold-num', dest='threshold_num', type=int,
             help='Threshold number of masked edges to remain')
+    parser.add_argument('--threshold-ratio', dest='threshold_ratio', type=float,
+            help='Threshold ratio to remain masked edges')
     parser.add_argument('--threshold', dest='threshold', type=float,
             help='Threshold to remain masked edges')
     parser.add_argument('--graph-idx', dest='graph_idx', type=int,
@@ -78,6 +80,7 @@ def arg_parse():
                         num_epochs=500,
                         mask_act='sigmoid',
                         threshold_num=None,
+                        threshold_ratio=None,
                         threshold=0.1,
                         graph_idx=-1,
                         multigraph_class=-1,

@@ -1,4 +1,5 @@
 import os
+import itertools
 import statistics
 import matplotlib
 import matplotlib.pyplot as plt
@@ -71,7 +72,7 @@ def log_matrix(writer, mat, name, epoch, fig_size=(8,6), dpi=200):
     writer.add_image(name, tensorboardX.utils.figure_to_image(fig), epoch)
 
 
-def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_num=None, tokey=False, max_component=False):
+def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_ratio=None, threshold_num=None, tokey=False, max_component=False):
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
@@ -88,9 +89,9 @@ def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_num=None
     if tokey and feat is not None:
         # dFeat: [[node, node_class],...]; dClass: {node_class:node(s),...}
         # dMax: {max_val for node_class:node,...}; lMax: [max_val for node_class,...]
-        # th: the threshold_num maximum values in lMax; th_new: remove small values relative to th[-1] 
+        # th: the threshold_num maximum values in lMax
         dFeat=feat.nonzero().data.numpy()
-        dClass0, dMax0, lMax0, dClass1, dMax1, lMax1, th_new = {}, {}, [], {}, {}, [], []
+        dClass0, dMax0, lMax0, dClass1, dMax1, lMax1 = {}, {}, [], {}, {}, []
         for i in range(2):
             for node in adj[i].nonzero()[0]:
                 if dFeat[node,1] not in eval('dClass'+str(i)).keys():
@@ -102,20 +103,27 @@ def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_num=None
                 max_val = np.max(tmp_array)
                 eval('lMax'+str(i)).append(max_val)
                 eval('dMax'+str(i))[max_val] = eval('dClass'+str(i))[node_class][np.argmax(tmp_array)]
+        lMax0, lMax1 = np.sort(lMax0), np.sort(lMax1)
         if threshold_num is not None:
-            th0, th1 = np.sort(lMax0)[-threshold_num:], np.sort(lMax1)[-threshold_num:]
+            th0, th1 = lMax0[-threshold_num:], lMax1[-threshold_num:]
+        elif threshold_ratio is not None:
+            thr0, thr1 = lMax0[-1]*threshold_ratio, lMax1[-1]*threshold_ratio
+            th0, th1 = lMax0[lMax0>=thr0], lMax1[lMax1>=thr1]
+        elif threshold is not None:
+            th0, th1 = lMax0[lMax0>=threshold], lMax1[lMax1>=threshold]
+        if threshold==None and threshold_ratio==None and threshold_num==None:
+            weighted_edge_list = [(0, j, adj[0,j]) for j in range(num_nodes) if adj[0,j] > 1e-6]
+        else:
             ind = np.argmax([sum(th0),sum(th1)])
             dMax, th = eval('dMax'+str(ind)), eval('th'+str(ind))
-            for val in th:
-                if 10*val >= th[-1]:
-                    th_new.append(val)
-            weighted_edge_list = [(ind, dMax[val], val) for val in th_new]
-        elif threshold is not None:
-            sum0, sum1 = sum(adj[0,adj[0]>=threshold]), sum(adj[1,adj[1]>=threshold])
-            ind = np.argmax([sum0,sum1])
-            weighted_edge_list = [(ind, j, adj[ind,j]) for j in range(num_nodes) if adj[ind,j] >= threshold]
-        else:
-            weighted_edge_list = [(0, j, adj[0,j]) for j in range(num_nodes) if adj[0,j] > 1e-6]
+            if threshold_num is not None:  # remove small values relative to th[-1] 
+                th = [val for val in th if 10*val >= th[-1]]
+            weighted_edge_list = [(ind, dMax[val], val) for val in th]
+            attr2attr = list(itertools.combinations(th,2))  # add big edges among attrs selected
+            if attr2attr != []:
+                for (i,j) in attr2attr:
+                    if adj[dMax[i],dMax[j]] >= 0.9*th[0]:
+                        weighted_edge_list.append((dMax[i],dMax[j],adj[dMax[i],dMax[j]]))
     else:
         if threshold_num is not None:
             threshold = np.sort(adj[np.triu(adj>0)])[-threshold_num]
