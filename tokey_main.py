@@ -28,10 +28,12 @@ if args.graph_idx != -1:
     with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'key'), 'w') as f:
         writer = csv.writer(f)
         writer.writerow([edge[1] for edge in key])
+    print('pred_loss of last epoch is', data.pred_loss)
 else:
     cands = {}
     lCands = []  # [{(,),(,)...},{...},...]
-    graphs = data
+    graphs = [graph for graph in data if graph.pred_loss < 0.69]
+    print('Remove {}/{} graphs whose pred_loss are more than 0.69.'.format(len(data)-len(graphs), len(data)))
     for graph in graphs:
         cand = set()
         edges = list(graph.key.edges)
