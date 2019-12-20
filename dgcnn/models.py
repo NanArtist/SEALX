@@ -378,4 +378,4 @@ class GNNGraph(object):
         self.adj = masked_adj.squeeze()
         self.add_mask = True
         if masked_x is not None:
-            self.node_attrs = masked_x.squeeze().detach().numpy()
+            self.node_attrs = masked_x.squeeze().cpu().detach().numpy()

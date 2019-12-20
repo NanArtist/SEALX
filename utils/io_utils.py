@@ -76,15 +76,15 @@ def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_ratio=No
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
-    G.node[0]['self'] = 1
-    G.node[1]['self'] = 1
+    G.nodes[0]['self'] = 1
+    G.nodes[1]['self'] = 1
 
     if feat is not None:
         for node in G.nodes():
-            G.node[node]['feat'] = feat[node]
+            G.nodes[node]['feat'] = feat[node]
     if label is not None:
         for node in G.nodes():
-            G.node[node]['label'] = label[node] 
+            G.nodes[node]['label'] = label[node] 
 
     if tokey and feat is not None:
         # dFeat: [[node, node_class],...]; dClass: {node_class:node(s),...}
@@ -164,8 +164,8 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     # maximum value for node color
     vmax = 8
     for i in Gc.nodes():
-        if nodecolor == 'feat' and 'feat' in Gc.node[i]:
-            num_classes = Gc.node[i]['feat'].size()[0]
+        if nodecolor == 'feat' and 'feat' in Gc.nodes[i]:
+            num_classes = Gc.nodes[i]['feat'].size()[0]
             if num_classes >= 10:
                 cmap = plt.get_cmap('tab20')
                 vmax = 19
@@ -176,12 +176,12 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     
     feat_labels={}
     for i in Gc.nodes():
-        if identify_self and 'self' in Gc.node[i]:
+        if identify_self and 'self' in Gc.nodes[i]:
             node_colors.append(0)
-        elif nodecolor == 'label' and 'label' in Gc.node[i]:
-            node_colors.append(Gc.node[i]['label'] + 1)
-        elif nodecolor == 'feat' and 'feat' in Gc.node[i]:
-            feat = Gc.node[i]['feat'].detach().numpy()
+        elif nodecolor == 'label' and 'label' in Gc.nodes[i]:
+            node_colors.append(Gc.nodes[i]['label'] + 1)
+        elif nodecolor == 'feat' and 'feat' in Gc.nodes[i]:
+            feat = Gc.nodes[i]['feat'].detach().numpy()
             # idx with pos val in 1D array
             for j in range(len(feat)):
                 if feat[j] != 0:

@@ -12,8 +12,8 @@ data = pickle.load(open(filepath,'rb'))
 edge_dict = {}
 with open('data/'+args.data_name+'/edgeclass', 'r') as f:
     for row in f.readlines():
-        row = row.strip().split('\t')
-        edge_dict[(int(row[0]),int(row[1]))] = (row[2], row[4],row[3])
+        row = row.strip().split(',')
+        edge_dict[(int(row[0]),int(row[1]))] = (row[2], row[4], row[3])
 
 if args.graph_idx != -1:
     key = []
@@ -50,13 +50,25 @@ else:
         else:
             idx = lCands.index(cand)
             cands[idx] += 1
-    ikeys, keys = [], [] 
-    for i in cands.keys():
-        if cands[i] > 0.1 * len(graphs):
-            ikeys.append(lCands[i])
-    for key in ikeys:
+    cands = sorted(cands.items(), key = lambda kv:(kv[1], kv[0]), reverse = True)
+    keys, dkeys = [], []
+    for key in lCands:
         keys.append([edge_dict[edge] for edge in key])
+    for item in cands:
+        dkeys.append([keys[item[0]], item[1]])
     with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keys'), 'w') as f:
         writer = csv.writer(f)
-        for key in keys:
-            writer.writerow([edge[1] for edge in key])
+        for key in dkeys:
+            writer.writerow([edge[1] for edge in key[0]]+[key[1]])
+        writer.writerow(['Remove {}/{} graphs whose pred_loss are more than 0.69.'.format(len(data)-len(graphs), len(data))])
+
+    # ikeys, keys = [], [] 
+    # for i in cands.keys():
+    #     if cands[i] > 0.1 * len(graphs):
+    #         ikeys.append(lCands[i])
+    # for key in ikeys:
+    #     keys.append([edge_dict[edge] for edge in key])
+    # with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keys'), 'w') as f:
+    #     writer = csv.writer(f)
+    #     for key in keys:
+    #         writer.writerow([edge[1] for edge in key])
