@@ -70,18 +70,18 @@ def arg_parse():
     opt_parser.add_argument('--lr', dest='lr', type=float,
             help='Learning rate')
     # defaults
-    parser.set_defaults(ckptdir='ckpt',    # io settings
+    parser.set_defaults(ckptdir='test/ckpt',    # io settings
                         data_name='dbac',
                         name_suffix='',
                         train_num_epochs=50,
-                        logdir='log',
+                        logdir='test/log',
                         explainer_suffix='',
                         cuda='0',    # explain settings
                         num_epochs=500,
                         mask_act='sigmoid',
                         threshold_num=None,
-                        threshold_ratio=None,
-                        threshold=0.1,
+                        threshold_ratio=0.9,
+                        threshold=None,
                         graph_idx=-1,
                         multigraph_class=-1,
                         graph_indices='RANDOM30',

@@ -27,7 +27,7 @@ def args_parse():
     parser.add_argument('--hop', metavar='S', help='enclosing subgraph hop number, options: 1, 2,..., "auto"')
     parser.add_argument('--max-nodes-per-hop', help='if > 0, upper bound the # nodes per hop by subsampling')
     parser.add_argument('--use-embedding', help='how to use embeddings, option: None, "node2vec", "word2vec"')
-    parser.add_argument('--use-attribute', action='store_true', default=False, help='whether to use node attributes')
+    parser.add_argument('--no-attribute', action='store_true', default=False, help='whether not to use node attributes')
     parser.add_argument('--parallel', action='store_true', default=False, help='whether to extract subgraphs in parallel')
     # DGCNN configurations (primary)
     cmd_args = parser.add_argument_group(description='Arguments for DGCNN')
@@ -61,13 +61,13 @@ def args_parse():
                         test_name=None,
                         seed=1,
                         name_suffix='',
-                        logdir='log',
-                        ckptdir='ckpt',
+                        logdir='test/log',
+                        ckptdir='test/ckpt',
                         max_train_num=100000,  # settings for stage 1 and 2
                         test_ratio=0.1,
                         hop=1,
                         max_nodes_per_hop=None,
-                        use_embedding = None,
+                        use_embedding = "word2vec",
                         mode='cpu',  # DGCNN configurations (primary)
                         gm='DGCNN',
                         feat_dim=0,
@@ -205,7 +205,7 @@ def main():
         embeddings = data['w2v']
     else:
         embeddings = None
-    if args.use_attribute and 'group' in data.keys():
+    if (not args.no_attribute) and ('group' in data.keys()):
         attributes = data['group']
     else:
         attributes = None
