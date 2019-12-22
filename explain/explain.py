@@ -33,7 +33,7 @@ class Explainer:
         sub_adj = np.expand_dims(sub_adj.toarray(), axis=0)
         adj = torch.tensor(sub_adj, dtype=torch.float)
 
-        sub_feat = self.feat[graph_idx]
+        sub_feat = self.feat[graph_idx] if self.feat is not None else None
         if sub_feat is not None:
             sub_feat = np.expand_dims(sub_feat, axis=0)
             sub_feat = torch.tensor(sub_feat, requires_grad=True, dtype=torch.float)
@@ -118,8 +118,8 @@ class ExplainModule(nn.Module):
 
         num_nodes = adj.size()[1]
         self.mask, self.mask_bias = self.construct_edge_mask(num_nodes, init_strategy='normal')
-        self.feat_mask = self.construct_feat_mask(num_nodes, x.size(-1), init_strategy='constant', bidim=False) \
-            if x is not None else None
+        self.feat_mask = None # self.construct_feat_mask(num_nodes, x.size(-1), init_strategy='constant', bidim=False) \
+            # if x is not None else None
         params = [self.mask]
         if self.feat_mask is not None:
             params.append(self.feat_mask)
@@ -171,18 +171,19 @@ class ExplainModule(nn.Module):
             self.graph.update(self.masked_adj)
         else:
             self.masked_adj = self._masked_adj()
-            x = self.x.cuda() if self.args.gpu else self.x
+            x = self.x.cuda() if (self.args.gpu and self.x is not None) else self.x
             self.masked_x = None
             if mask_features and x is not None:
-                feat_mask = torch.sigmoid(self.feat_mask) if self.use_sigmoid else self.feat_mask
+                feat_mask = torch.sigmoid(self.feat_mask) if (self.use_sigmoid and self.feat_mask is not None) else self.feat_mask
                 marginalize = False
-                if marginalize:
-                    std_tensor = torch.ones_like(x, dtype=torch.float) / 2
-                    mean_tensor = torch.zeros_like(x, dtype=torch.float) - x
-                    z = torch.normal(mean=mean_tensor, std=std_tensor)
-                    self.masked_x = x + z * (1 - feat_mask)
-                else:
-                    self.masked_x = x * feat_mask
+                if feat_mask is not None:
+                    if marginalize:
+                        std_tensor = torch.ones_like(x, dtype=torch.float) / 2
+                        mean_tensor = torch.zeros_like(x, dtype=torch.float) - x
+                        z = torch.normal(mean=mean_tensor, std=std_tensor)
+                        self.masked_x = x + z * (1 - feat_mask)
+                    else:
+                        self.masked_x = x * feat_mask
             self.graph.update(self.masked_adj, self.masked_x)
 
         logits, _, _ = self.model([self.graph])
