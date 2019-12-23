@@ -112,6 +112,12 @@ def main():
     else:
         writer = None
 
+    prog_args.edge_dict = {}
+    with open('data/'+prog_args.data_name+'/edgeclass', 'r') as f:
+        for row in f.readlines():
+            row = row.strip().split(',')
+            prog_args.edge_dict[(int(row[0]),int(row[1]))] = row[-1]
+
     ckpt = io_utils.load_ckpt(prog_args, prog_args.train_num_epochs)
     cg_dict = ckpt['cg']
 
@@ -159,6 +165,10 @@ def main():
     filename = 'masked_graph.pkl' if prog_args.graph_idx != -1 else 'masked_graphs.pkl'
     file_graph = masked_graph if prog_args.graph_idx != -1 else masked_graphs
     pickle.dump(file_graph, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
+
+    # # save keys
+    # if prog_args.graph_idx == -1:
+    #     io_utils.keylog2keys(prog_args)
 
 
 if __name__ == "__main__":

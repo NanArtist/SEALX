@@ -87,7 +87,7 @@ class Explainer:
             'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
             identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
         
-        graph.key = G_denoised
+        graph.key = io_utils.subgraph2key(self.args, G_denoised, pred_loss)
         graph.pred_loss = pred_loss
 
         return graph
