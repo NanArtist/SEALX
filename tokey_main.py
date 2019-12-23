@@ -13,7 +13,7 @@ edge_dict = {}
 with open('data/'+args.data_name+'/edgeclass', 'r') as f:
     for row in f.readlines():
         row = row.strip().split(',')
-        edge_dict[(int(row[0]),int(row[1]))] = (row[2], row[4], row[3])
+        edge_dict[(int(row[0]),int(row[1]))] = row[-1]
 
 if args.graph_idx != -1:
     key = []
@@ -27,7 +27,7 @@ if args.graph_idx != -1:
             key.append(edge_dict[(class0,class1)])
     with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'key'), 'w') as f:
         writer = csv.writer(f)
-        writer.writerow([edge[1] for edge in key])
+        writer.writerow(key)
     print('pred_loss of last epoch is', data.pred_loss)
 else:
     cands = {}
@@ -59,7 +59,7 @@ else:
     with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keys'), 'w') as f:
         writer = csv.writer(f)
         for key in dkeys:
-            writer.writerow([edge[1] for edge in key[0]]+[key[1]])
+            writer.writerow(key[0]+[key[1]])
         writer.writerow(['Remove {}/{} graphs whose pred_loss are more than 0.69.'.format(len(data)-len(graphs), len(data))])
 
     # ikeys, keys = [], [] 

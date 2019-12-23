@@ -77,7 +77,7 @@ def arg_parse():
                         logdir='test/log',
                         explainer_suffix='',
                         cuda='0',    # explain settings
-                        num_epochs=500,
+                        num_epochs=300,
                         mask_act='sigmoid',
                         threshold_num=None,
                         threshold_ratio=0.9,
