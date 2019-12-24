@@ -53,7 +53,10 @@ def load_ckpt(args, num_epochs=-1):
     filename = create_filename(args.ckptdir, args, num_epochs)
     if os.path.isfile(filename):
         print("=> loading checkpoint '{}'".format(filename))
-        ckpt = torch.load(filename)
+        if not args.gpu:
+            ckpt = torch.load(filename, map_location=torch.device('cpu'))
+        else:
+            ckpt = torch.load(filename)
     return ckpt
 
 

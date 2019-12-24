@@ -143,8 +143,8 @@ def main():
         for i, l in enumerate(cg_dict['label']):
             if l == prog_args.multigraph_class:
                 graph_indices.append(i)
-            if len(graph_indices) > 30:
-                break
+        #     if len(graph_indices) > 30:
+        #         break
         print('Graph indices for label', prog_args.multigraph_class, ':', graph_indices)
         masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     else:
