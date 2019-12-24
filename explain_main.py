@@ -53,6 +53,8 @@ def arg_parse():
             help='Graph to explain')
     parser.add_argument('--multigraph-class', dest='multigraph_class', type=int,
             help='Graph class to explain')
+    parser.add_argument('--mc-idx', dest='mc_idx', type=int,
+            help='index of start for multigraph-class explanation')
     parser.add_argument('--graph-indices', dest='graph_indices',
             help='Graphs to explain')
     # optimizaion
@@ -84,6 +86,7 @@ def arg_parse():
                         threshold=None,
                         graph_idx=-1,
                         multigraph_class=-1,
+                        mc_idx = -1,
                         graph_indices='RANDOM30',
                         opt='adam',    # optimization
                         opt_scheduler='none',
@@ -140,11 +143,15 @@ def main():
     elif prog_args.multigraph_class >= 0:
         # only run for graphs with label specified by multigraph_class
         graph_indices = []
-        for i, l in enumerate(cg_dict['label']):
-            if l == prog_args.multigraph_class:
-                graph_indices.append(i)
-        #     if len(graph_indices) > 30:
-        #         break
+        if prog_args.mc_idx == -1:
+            for i, l in enumerate(cg_dict['label']):
+                if l == prog_args.multigraph_class:
+                    graph_indices.append(i)
+        else:
+            for i in range(prog_args.mc_idx, cg_dict['label'].shape[0]):
+                if cg_dict['label'][i] == prog_args.multigraph_class:
+                    graph_indices.append(i)
+            
         print('Graph indices for label', prog_args.multigraph_class, ':', graph_indices)
         masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     else:
