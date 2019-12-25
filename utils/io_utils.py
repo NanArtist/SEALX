@@ -245,7 +245,14 @@ def subgraph2key(args, denoise_graph, pred_loss):
             key.append(args.edge_dict[(class1,class0)])
         else:
             key.append(args.edge_dict[(class0,class1)])
-    with open(os.path.join(args.logdir, gen_explainer_prefix(args), 'keylog'), 'a+') as f:
+    
+    filename = 'keylog'
+    if args.mc_idx != -1:
+        filename += '_' + str(args.mc_idx) + '+'
+    elif args.mc_sidx != -1 and args.mc_eidx != -1:
+        filename += '_' + str(args.mc_sidx) + '-' + str(args.mc_eidx)
+    
+    with open(os.path.join(args.logdir, gen_explainer_prefix(args), filename), 'a+') as f:
         writer = csv.writer(f)
         if pred_loss < 0.69:
             writer.writerow(key)
