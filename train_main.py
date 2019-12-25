@@ -146,6 +146,8 @@ def loop_dataset(g_list, classifier, sample_idxes, bsize, optimizer=None, schedu
 
 
 def main():
+    start = time.time()
+    
     '''argument settings'''
     args = args_parse()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -263,6 +265,10 @@ def main():
                 'feat': np.array([graph.node_attrs for graph in graphs]),
                 'label': np.array([graph.label for graph in graphs])}
     save_checkpoint(args, classifier, cg_dict)
+
+    # print total time
+    end = time.time()
+    print('All finished in {}s.'.format(end - start))
 
 
 if __name__ == "__main__":

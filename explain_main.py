@@ -1,4 +1,4 @@
-import os
+import os, time
 import random
 import pickle
 import argparse
@@ -96,6 +96,8 @@ def arg_parse():
 
 
 def main():
+    start = time.time()
+    
     # args
     prog_args = arg_parse()
 
@@ -175,6 +177,10 @@ def main():
 
     # save keys
     io_utils.keylog2keys(prog_args)
+
+    # print total time
+    end = time.time()
+    print('All finished in {}s.'.format(end - start))
 
 
 if __name__ == "__main__":
