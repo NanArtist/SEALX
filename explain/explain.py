@@ -231,10 +231,12 @@ class ExplainModule(nn.Module):
         feat_ent = -self.masked_x * torch.log(self.masked_x+(self.masked_x==0).float()) \
             -(1-self.masked_x) * torch.log(1-self.masked_x+(self.masked_x==1).float()) if self.masked_x is not None else torch.zeros(1)
         feat_ent_loss = self.coeffs['feat_ent'] * torch.mean(feat_ent)
+        if self.args.gpu: feat_ent_loss = feat_ent_loss.cuda()
 
         # size
-        adj_size_loss = self.coeffs['adj_size'] * torch.mean(self.masked_adj).cpu()
-        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x).cpu() if self.masked_x is not None else torch.zeros(1)
+        adj_size_loss = self.coeffs['adj_size'] * torch.mean(self.masked_adj)
+        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x) if self.masked_x is not None else torch.zeros(1)
+        if self.args.gpu: feat_size_loss = feat_size_loss.cuda()
 
         loss = pred_loss + adj_ent_loss + feat_ent_loss + adj_size_loss + feat_size_loss
 
