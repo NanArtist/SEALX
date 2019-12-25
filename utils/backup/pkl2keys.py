@@ -1,3 +1,6 @@
+'''For key generation from masked_graph(s).pkl.
+   In use, the working path of this file should be SEALX.'''
+
 import os, csv
 import pickle
 import torch
@@ -25,7 +28,7 @@ if args.graph_idx != -1:
             key.append(edge_dict[(class1,class0)])
         else:
             key.append(edge_dict[(class0,class1)])
-    with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'key'), 'w') as f:
+    with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'pkl2key'), 'w') as f:
         writer = csv.writer(f)
         writer.writerow(key)
     print('pred_loss of last epoch is', data.pred_loss)
@@ -56,7 +59,7 @@ else:
         keys.append([edge_dict[edge] for edge in key])
     for item in cands:
         dkeys.append([keys[item[0]], item[1]])
-    with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keys'), 'w') as f:
+    with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'pkl2keys'), 'w') as f:
         writer = csv.writer(f)
         for key in dkeys:
             writer.writerow(key[0]+[key[1]])

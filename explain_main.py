@@ -173,9 +173,8 @@ def main():
     file_graph = masked_graph if prog_args.graph_idx != -1 else masked_graphs
     pickle.dump(file_graph, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
 
-    # # save keys
-    # if prog_args.graph_idx == -1:
-    #     io_utils.keylog2keys(prog_args)
+    # save keys
+    io_utils.keylog2keys(prog_args)
 
 
 if __name__ == "__main__":

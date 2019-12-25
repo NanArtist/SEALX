@@ -61,17 +61,18 @@ class Explainer:
                 explainer.scheduler.step()
 
             mask_density = explainer.mask_density()
+            if self.writer is not None:
+                self.writer.add_scalar(gidx+'mask/density', mask_density, epoch)
+                self.writer.add_scalar(gidx+'optimization/lr', explainer.optimizer.param_groups[0]['lr'], epoch)
+                if epoch % 100 == 0:
+                    explainer.log_mask(epoch)
+                    explainer.log_masked_adj(epoch)
+
             if self.print_training:
                 print('epoch:', epoch, ';\tloss:', loss.item(),
                         ';\tmask density:', mask_density.item(),
                         ';\tpred:', ypred)
 
-            if self.writer is not None:
-                self.writer.add_scalar(gidx+'mask/density', mask_density, epoch)
-                self.writer.add_scalar(gidx+'optimization/lr', explainer.optimizer.param_groups[0]['lr'], epoch)
-                if epoch % 25 == 0:
-                    explainer.log_mask(epoch)
-                    explainer.log_masked_adj(epoch)
         print('finished training in', time.time()-begin_time)
 
         feat = x[0] if x is not None else None
