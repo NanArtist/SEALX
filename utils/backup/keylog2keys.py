@@ -1,11 +1,15 @@
 '''For key generation from keylog.
    It can be useful if the server is down during the explaining process.
-   In use, this file should be in the same directory with keylog to be processed.'''
+   There is no need to move the file.'''
 
 import os, csv
+import sys
+sys.path.append('%s/../../' % os.path.dirname(os.path.realpath(__file__)))
+from explain_main import arg_parse
+from utils import io_utils
 
-filename = 'keylog'
-data = list(csv.reader(open(filename, 'r')))
+args = arg_parse()
+data = list(csv.reader(open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keylog'), 'r')))
 
 cands = {}
 lCands = []  # [{(,),(,)...},{...},...]
@@ -20,7 +24,7 @@ for candk in candkeys:
         idx = lCands.index(cand)
         cands[idx] += 1
 cands = sorted(cands.items(), key = lambda kv:(kv[1], kv[0]), reverse = True)
-with open('keylog2keys', 'w', newline="") as f:
+with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keylog2keys'), 'w', newline="") as f:
     writer = csv.writer(f)
     for key in cands:
         writer.writerow(list(lCands[key[0]])+[key[1]])

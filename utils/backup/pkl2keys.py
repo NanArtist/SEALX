@@ -1,9 +1,10 @@
 '''For key generation from masked_graph(s).pkl.
-   In use, the working path of this file should be SEALX.'''
+   There is no need to move the file.'''
 
 import os, csv
 import pickle
-import torch
+import sys
+sys.path.append('%s/../../' % os.path.dirname(os.path.realpath(__file__)))
 from explain_main import arg_parse
 from utils import io_utils
 
@@ -39,7 +40,7 @@ else:
     print('Remove {}/{} graphs whose pred_loss are more than 0.69.'.format(len(data)-len(graphs), len(data)))
     for graph in graphs:
         cand = set()
-        edges = list(graph.key.edges)
+        edges = list(graph.keygraph.edges)
         for edge in edges:
             class0 = graph.node_attrs[edge[0]].nonzero()[0][0]
             class1 = graph.node_attrs[edge[1]].nonzero()[0][0]
@@ -64,14 +65,3 @@ else:
         for key in dkeys:
             writer.writerow(key[0]+[key[1]])
         writer.writerow(['Remove {}/{} graphs whose pred_loss are more than 0.69.'.format(len(data)-len(graphs), len(data))])
-
-    # ikeys, keys = [], [] 
-    # for i in cands.keys():
-    #     if cands[i] > 0.1 * len(graphs):
-    #         ikeys.append(lCands[i])
-    # for key in ikeys:
-    #     keys.append([edge_dict[edge] for edge in key])
-    # with open(os.path.join(args.logdir, io_utils.gen_explainer_prefix(args), 'keys'), 'w') as f:
-    #     writer = csv.writer(f)
-    #     for key in keys:
-    #         writer.writerow([edge[1] for edge in key])

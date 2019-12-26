@@ -89,6 +89,8 @@ class Explainer:
             identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
         
         graph.key = io_utils.subgraph2key(self.args, G_denoised, pred_loss)
+        graph.keygraph = G_denoised
+        graph.origgraph = G_orig
         graph.pred_loss = pred_loss
 
         return graph
