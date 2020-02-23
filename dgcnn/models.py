@@ -323,6 +323,16 @@ class MLPClassifier(nn.Module):
             y = Variable(y)
             loss = F.nll_loss(logits, y)
             pred = logits.data.max(1, keepdim=True)[1]
+            # res = 2*pred + 1*y.data.view_as(pred)
+            # TP = res.eq(3).cpu().sum().item()
+            # TN = res.eq(0).cpu().sum().item()
+            # FP = res.eq(2).cpu().sum().item()
+            # FN = res.eq(1).cpu().sum().item()
+            # p = TP / (TP + FP) if (TP + FP) != 0 else 0
+            # r = TP / (TP + FN) if (TP + FN) != 0 else 0
+            # f1 = (2 * p * r) / (p + r) if p != 0 and r != 0 else 0
+            # acc = (TP + TN) / (TP + TN + FP + FN)
+            # return logits, loss, acc, p, r, f1
             acc = pred.eq(y.data.view_as(pred)).cpu().sum().item() / float(y.size()[0])
             return logits, loss, acc
         else:

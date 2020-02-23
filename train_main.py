@@ -109,6 +109,7 @@ def loop_dataset(g_list, classifier, sample_idxes, bsize, optimizer=None, schedu
             pred, mae, loss = classifier(batch_graph)
             all_scores.append(pred.cpu().detach())  # for binary classification
         else:
+            # logits, loss, acc, p, r, f1 = classifier(batch_graph)
             logits, loss, acc = classifier(batch_graph)
             all_scores.append(logits[:, 1].cpu().detach())  # for binary classification
 
@@ -140,6 +141,7 @@ def loop_dataset(g_list, classifier, sample_idxes, bsize, optimizer=None, schedu
         all_targets = np.array(all_targets)
         fpr, tpr, _ = metrics.roc_curve(all_targets, all_scores, pos_label=1)
         auc = metrics.auc(fpr, tpr)
+        # avg_loss = np.concatenate((avg_loss, [auc, p, r, f1]))
         avg_loss = np.concatenate((avg_loss, [auc]))
     
     return avg_loss
@@ -245,12 +247,14 @@ def main():
         avg_loss = loop_dataset(train_graphs, classifier, train_idx, args.batch_size, optimizer=optimizer, scheduler=scheduler)
         if not args.printAUC:
             avg_loss[2] = 0.0
+        # print('\033[92maverage training of epoch %d: loss %.3f acc %.3f auc %.3f p %.3f r %.3f f1 %.3f\033[0m' % (epoch, avg_loss[0], avg_loss[1], avg_loss[2], avg_loss[3], avg_loss[4], avg_loss[5]))
         print('\033[92maverage training of epoch %d: loss %.5f acc %.5f auc %.5f\033[0m' % (epoch, avg_loss[0], avg_loss[1], avg_loss[2]))
 
         classifier.eval()
         test_loss = loop_dataset(test_graphs, classifier, list(range(len(test_graphs))), args.batch_size)
         if not args.printAUC:
             test_loss[2] = 0.0
+        # print('\033[93maverage test of epoch %d: loss %.3f acc %.3f auc %.3f p %.3f r %.3f f1 %.3f\033[0m' % (epoch, test_loss[0], test_loss[1], test_loss[2], test_loss[3], test_loss[4], test_loss[5]))
         print('\033[93maverage test of epoch %d: loss %.5f acc %.5f auc %.5f\033[0m' % (epoch, test_loss[0], test_loss[1], test_loss[2]))
 
     # save evaluation results
