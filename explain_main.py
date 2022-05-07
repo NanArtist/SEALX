@@ -77,7 +77,7 @@ def arg_parse():
             help='Learning rate')
     # defaults
     parser.set_defaults(ckptdir='test/ckpt',    # io settings
-                        data_name='dbyoA',
+                        data_name='dbac',
                         name_suffix='',
                         train_num_epochs=50,
                         logdir='test/log',
