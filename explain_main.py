@@ -1,4 +1,4 @@
-import os
+import os, time
 import random
 import pickle
 import argparse
@@ -53,6 +53,12 @@ def arg_parse():
             help='Graph to explain')
     parser.add_argument('--multigraph-class', dest='multigraph_class', type=int,
             help='Graph class to explain')
+    parser.add_argument('--mc-idx', dest='mc_idx', type=int,
+            help='index of start for multigraph-class explanation to the end')
+    parser.add_argument('--mc-sidx', dest='mc_sidx', type=int,
+            help='index of start for multigraph-class explanation')
+    parser.add_argument('--mc-eidx', dest='mc_eidx', type=int,
+            help='index of end for multigraph-class explanation')
     parser.add_argument('--graph-indices', dest='graph_indices',
             help='Graphs to explain')
     # optimizaion
@@ -70,20 +76,23 @@ def arg_parse():
     opt_parser.add_argument('--lr', dest='lr', type=float,
             help='Learning rate')
     # defaults
-    parser.set_defaults(ckptdir='ckpt',    # io settings
-                        data_name='dbac',
+    parser.set_defaults(ckptdir='test/ckpt',    # io settings
+                        data_name='dbyoA',
                         name_suffix='',
                         train_num_epochs=50,
-                        logdir='log',
+                        logdir='test/log',
                         explainer_suffix='',
                         cuda='0',    # explain settings
-                        num_epochs=500,
+                        num_epochs=300,
                         mask_act='sigmoid',
                         threshold_num=None,
-                        threshold_ratio=None,
-                        threshold=0.1,
+                        threshold_ratio=0.9,
+                        threshold=None,
                         graph_idx=-1,
                         multigraph_class=-1,
+                        mc_idx = -1,
+                        mc_sidx = -1,
+                        mc_eidx = -1,
                         graph_indices='RANDOM30',
                         opt='adam',    # optimization
                         opt_scheduler='none',
@@ -93,9 +102,11 @@ def arg_parse():
 
 
 def main():
+    start = time.time()
+    
     # args
     prog_args = arg_parse()
-
+    print(prog_args.data_name)
     if prog_args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = prog_args.cuda
         print('CUDA', prog_args.cuda)
@@ -111,6 +122,12 @@ def main():
         writer = SummaryWriter(path)
     else:
         writer = None
+
+    prog_args.edge_dict = {}
+    with open('data/'+prog_args.data_name+'/edgeclass', 'r') as f:
+        for row in f.readlines():
+            row = row.strip().split(',')
+            prog_args.edge_dict[(int(row[0]),int(row[1]))] = row[-1]
 
     ckpt = io_utils.load_ckpt(prog_args, prog_args.train_num_epochs)
     cg_dict = ckpt['cg']
@@ -134,11 +151,19 @@ def main():
     elif prog_args.multigraph_class >= 0:
         # only run for graphs with label specified by multigraph_class
         graph_indices = []
-        for i, l in enumerate(cg_dict['label']):
-            if l == prog_args.multigraph_class:
-                graph_indices.append(i)
-            if len(graph_indices) > 30:
-                break
+        if prog_args.mc_idx != -1:
+            for i in range(prog_args.mc_idx, cg_dict['label'].shape[0]):
+                if cg_dict['label'][i] == prog_args.multigraph_class:
+                    graph_indices.append(i)
+        elif prog_args.mc_sidx != -1 and prog_args.mc_sidx != -1:
+            for i in range(prog_args.mc_sidx, prog_args.mc_eidx + 1):
+                if cg_dict['label'][i] == prog_args.multigraph_class:
+                    graph_indices.append(i)
+        else:
+            for i, l in enumerate(cg_dict['label']):
+                if l == prog_args.multigraph_class:
+                    graph_indices.append(i)
+            
         print('Graph indices for label', prog_args.multigraph_class, ':', graph_indices)
         masked_graphs = explainer.explain_graphs(graph_indices=graph_indices)
     else:
@@ -156,9 +181,21 @@ def main():
         writer.close()
 
     # save masked_graph(s)
-    filename = 'masked_graph.pkl' if prog_args.graph_idx != -1 else 'masked_graphs.pkl'
+    filename = 'masked_graph' if prog_args.graph_idx != -1 else 'masked_graphs'
+    if prog_args.mc_idx != -1:
+        filename += '_' + str(prog_args.mc_idx) + '+'
+    elif prog_args.mc_sidx != -1 and prog_args.mc_eidx != -1:
+        filename += '_' + str(prog_args.mc_sidx) + '-' + str(prog_args.mc_eidx)
     file_graph = masked_graph if prog_args.graph_idx != -1 else masked_graphs
-    pickle.dump(file_graph, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename),'wb'))
+    pickle.dump(file_graph, open(os.path.join(prog_args.logdir,io_utils.gen_explainer_prefix(prog_args),filename+'.pkl'),'wb'))
+
+    # # save keys
+    # io_utils.keylog2keys(prog_args)
+
+    # print total time
+    end = time.time()
+    n_instances = 1 if prog_args.graph_idx != -1 else len(graph_indices)
+    print('{} instance(s) finished in {}s.'.format(n_instances, end - start))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ from tqdm import tqdm
 from dgcnn.models import *
 from utils.train_utils import *
 from utils.io_utils import save_checkpoint
+from tqdm import tqdm
 
 
 def args_parse():
@@ -27,7 +28,7 @@ def args_parse():
     parser.add_argument('--hop', metavar='S', help='enclosing subgraph hop number, options: 1, 2,..., "auto"')
     parser.add_argument('--max-nodes-per-hop', help='if > 0, upper bound the # nodes per hop by subsampling')
     parser.add_argument('--use-embedding', help='how to use embeddings, option: None, "node2vec", "word2vec"')
-    parser.add_argument('--use-attribute', action='store_true', default=False, help='whether to use node attributes')
+    parser.add_argument('--no-attribute', action='store_true', default=False, help='whether not to use node attributes')
     parser.add_argument('--parallel', action='store_true', default=False, help='whether to extract subgraphs in parallel')
     # DGCNN configurations (primary)
     cmd_args = parser.add_argument_group(description='Arguments for DGCNN')
@@ -56,18 +57,18 @@ def args_parse():
     opt_parser.add_argument('--opt-restart', dest='opt_restart', type=int, help='Number of epochs before restart (by default set to 0 which means no restart)')
     opt_parser.add_argument('--lr', dest='lr', type=float, help='Learning rate')
     # defaults
-    parser.set_defaults(data_name='dbac',  # general settings
+    parser.set_defaults(data_name='dbyoA',  # general settings
                         train_name=None,
                         test_name=None,
                         seed=1,
                         name_suffix='',
-                        logdir='log',
-                        ckptdir='ckpt',
+                        logdir='test/log',
+                        ckptdir='test/ckpt',
                         max_train_num=100000,  # settings for stage 1 and 2
                         test_ratio=0.1,
                         hop=1,
                         max_nodes_per_hop=None,
-                        use_embedding = None,
+                        use_embedding = "word2vec",
                         mode='cpu',  # DGCNN configurations (primary)
                         gm='DGCNN',
                         feat_dim=0,
@@ -146,6 +147,8 @@ def loop_dataset(g_list, classifier, sample_idxes, bsize, optimizer=None, schedu
 
 
 def main():
+    start = time.time()
+    
     '''argument settings'''
     args = args_parse()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -167,6 +170,7 @@ def main():
         args.data_dir = os.path.join(args.file_dir, 'data', args.data_name, '{}.mat'.format(args.data_name))
         data = sio.loadmat(args.data_dir)
         net = data['net']
+
         if 'match' in data.keys():
         # load same_as links
             match = data['match']
@@ -176,6 +180,8 @@ def main():
         if args.symmetric:
         # check whether net is symmetric (for small nets only)
             net_ = net.toarray()
+            #net_[idx_list, :] = 0
+            #net_[:, idx_list] = 0
             assert(np.allclose(net_, net_.T, atol=1e-8))
         train_pos, train_neg, test_pos, test_neg = sample_neg(mat=match, test_ratio=args.test_ratio, max_train_num=args.max_train_num)
         train_pos, train_neg, test_pos, test_neg = entity2vid(train_pos, iden), entity2vid(train_neg, iden), entity2vid(test_pos, iden), entity2vid(test_neg, iden)
@@ -195,6 +201,7 @@ def main():
         train_pos, train_neg, test_pos, test_neg = sample_neg(net, train_pos=train_pos, test_pos=test_pos, max_train_num=args.max_train_num)
 
     A = net.copy()  # the observed network
+
     A[test_pos[0], test_pos[1]] = 0  # mask test links
     A[test_pos[1], test_pos[0]] = 0  # mask test links
     
@@ -205,7 +212,7 @@ def main():
         embeddings = data['w2v']
     else:
         embeddings = None
-    if args.use_attribute and 'group' in data.keys():
+    if (not args.no_attribute) and ('group' in data.keys()):
         attributes = data['group']
     else:
         attributes = None
@@ -262,7 +269,14 @@ def main():
                 'adj': np.array([graph.adj for graph in graphs]),
                 'feat': np.array([graph.node_attrs for graph in graphs]),
                 'label': np.array([graph.label for graph in graphs])}
+    #print(cg_dict['feat'])
+    print(cg_dict['feat'].shape)
+    #exit(0)
     save_checkpoint(args, classifier, cg_dict)
+
+    # print total time
+    end = time.time()
+    print('All finished in {}s.'.format(end - start))
 
 
 if __name__ == "__main__":

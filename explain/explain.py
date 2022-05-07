@@ -33,7 +33,7 @@ class Explainer:
         sub_adj = np.expand_dims(sub_adj.toarray(), axis=0)
         adj = torch.tensor(sub_adj, dtype=torch.float)
 
-        sub_feat = self.feat[graph_idx]
+        sub_feat = self.feat[graph_idx] if self.feat is not None else None
         if sub_feat is not None:
             sub_feat = np.expand_dims(sub_feat, axis=0)
             sub_feat = torch.tensor(sub_feat, requires_grad=True, dtype=torch.float)
@@ -61,17 +61,18 @@ class Explainer:
                 explainer.scheduler.step()
 
             mask_density = explainer.mask_density()
+            if self.writer is not None:
+                self.writer.add_scalar(gidx+'mask/density', mask_density, epoch)
+                self.writer.add_scalar(gidx+'optimization/lr', explainer.optimizer.param_groups[0]['lr'], epoch)
+                if epoch % 100 == 0:
+                    explainer.log_mask(epoch)
+                    explainer.log_masked_adj(epoch)
+
             if self.print_training:
                 print('epoch:', epoch, ';\tloss:', loss.item(),
                         ';\tmask density:', mask_density.item(),
                         ';\tpred:', ypred)
 
-            if self.writer is not None:
-                self.writer.add_scalar(gidx+'mask/density', mask_density, epoch)
-                self.writer.add_scalar(gidx+'optimization/lr', explainer.optimizer.param_groups[0]['lr'], epoch)
-                if epoch % 25 == 0:
-                    explainer.log_mask(epoch)
-                    explainer.log_masked_adj(epoch)
         print('finished training in', time.time()-begin_time)
 
         feat = x[0] if x is not None else None
@@ -87,7 +88,9 @@ class Explainer:
             'explain/gidx_{}_label_{}'.format(graph_idx, self.label[graph_idx]),
             identify_self=False, nodecolor='feat', label_node_feat=True, args=self.args)
         
-        graph.key = G_denoised
+        graph.key = io_utils.subgraph2key(self.args, G_denoised, pred_loss)
+        graph.keygraph = G_denoised
+        graph.origgraph = G_orig
         graph.pred_loss = pred_loss
 
         return graph
@@ -118,8 +121,8 @@ class ExplainModule(nn.Module):
 
         num_nodes = adj.size()[1]
         self.mask, self.mask_bias = self.construct_edge_mask(num_nodes, init_strategy='normal')
-        self.feat_mask = self.construct_feat_mask(num_nodes, x.size(-1), init_strategy='constant', bidim=False) \
-            if x is not None else None
+        self.feat_mask = None # self.construct_feat_mask(num_nodes, x.size(-1), init_strategy='constant', bidim=False) \
+            # if x is not None else None
         params = [self.mask]
         if self.feat_mask is not None:
             params.append(self.feat_mask)
@@ -171,18 +174,19 @@ class ExplainModule(nn.Module):
             self.graph.update(self.masked_adj)
         else:
             self.masked_adj = self._masked_adj()
-            x = self.x.cuda() if self.args.gpu else self.x
+            x = self.x.cuda() if (self.args.gpu and self.x is not None) else self.x
             self.masked_x = None
             if mask_features and x is not None:
-                feat_mask = torch.sigmoid(self.feat_mask) if self.use_sigmoid else self.feat_mask
+                feat_mask = torch.sigmoid(self.feat_mask) if (self.use_sigmoid and self.feat_mask is not None) else self.feat_mask
                 marginalize = False
-                if marginalize:
-                    std_tensor = torch.ones_like(x, dtype=torch.float) / 2
-                    mean_tensor = torch.zeros_like(x, dtype=torch.float) - x
-                    z = torch.normal(mean=mean_tensor, std=std_tensor)
-                    self.masked_x = x + z * (1 - feat_mask)
-                else:
-                    self.masked_x = x * feat_mask
+                if feat_mask is not None:
+                    if marginalize:
+                        std_tensor = torch.ones_like(x, dtype=torch.float) / 2
+                        mean_tensor = torch.zeros_like(x, dtype=torch.float) - x
+                        z = torch.normal(mean=mean_tensor, std=std_tensor)
+                        self.masked_x = x + z * (1 - feat_mask)
+                    else:
+                        self.masked_x = x * feat_mask
             self.graph.update(self.masked_adj, self.masked_x)
 
         logits, _, _ = self.model([self.graph])
@@ -229,10 +233,12 @@ class ExplainModule(nn.Module):
         feat_ent = -self.masked_x * torch.log(self.masked_x+(self.masked_x==0).float()) \
             -(1-self.masked_x) * torch.log(1-self.masked_x+(self.masked_x==1).float()) if self.masked_x is not None else torch.zeros(1)
         feat_ent_loss = self.coeffs['feat_ent'] * torch.mean(feat_ent)
+        if self.args.gpu: feat_ent_loss = feat_ent_loss.cuda()
 
         # size
-        adj_size_loss = self.coeffs['adj_size'] * torch.mean(self.masked_adj).cpu()
-        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x).cpu() if self.masked_x is not None else torch.zeros(1)
+        adj_size_loss = self.coeffs['adj_size'] * torch.mean(self.masked_adj)
+        feat_size_loss = self.coeffs['feat_size'] * torch.mean(self.masked_x) if self.masked_x is not None else torch.zeros(1)
+        if self.args.gpu: feat_size_loss = feat_size_loss.cuda()
 
         loss = pred_loss + adj_ent_loss + feat_ent_loss + adj_size_loss + feat_size_loss
 

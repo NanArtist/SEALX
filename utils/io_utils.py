@@ -1,4 +1,4 @@
-import os
+import os, csv
 import itertools
 import statistics
 import matplotlib
@@ -53,7 +53,10 @@ def load_ckpt(args, num_epochs=-1):
     filename = create_filename(args.ckptdir, args, num_epochs)
     if os.path.isfile(filename):
         print("=> loading checkpoint '{}'".format(filename))
-        ckpt = torch.load(filename)
+        if not args.gpu:
+            ckpt = torch.load(filename, map_location=torch.device('cpu'))
+        else:
+            ckpt = torch.load(filename)
     return ckpt
 
 
@@ -76,15 +79,15 @@ def denoise_graph(adj, feat=None, label=None, threshold=None, threshold_ratio=No
     num_nodes = adj.shape[-1]
     G = nx.Graph()
     G.add_nodes_from(range(num_nodes))
-    G.node[0]['self'] = 1
-    G.node[1]['self'] = 1
+    G.nodes[0]['self'] = 1
+    G.nodes[1]['self'] = 1
 
     if feat is not None:
         for node in G.nodes():
-            G.node[node]['feat'] = feat[node]
+            G.nodes[node]['feat'] = feat[node]
     if label is not None:
         for node in G.nodes():
-            G.node[node]['label'] = label[node] 
+            G.nodes[node]['label'] = label[node] 
 
     if tokey and feat is not None:
         # dFeat: [[node, node_class],...]; dClass: {node_class:node(s),...}
@@ -164,8 +167,8 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     # maximum value for node color
     vmax = 8
     for i in Gc.nodes():
-        if nodecolor == 'feat' and 'feat' in Gc.node[i]:
-            num_classes = Gc.node[i]['feat'].size()[0]
+        if nodecolor == 'feat' and 'feat' in Gc.nodes[i]:
+            num_classes = Gc.nodes[i]['feat'].size()[0]
             if num_classes >= 10:
                 cmap = plt.get_cmap('tab20')
                 vmax = 19
@@ -176,12 +179,12 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
     
     feat_labels={}
     for i in Gc.nodes():
-        if identify_self and 'self' in Gc.node[i]:
+        if identify_self and 'self' in Gc.nodes[i]:
             node_colors.append(0)
-        elif nodecolor == 'label' and 'label' in Gc.node[i]:
-            node_colors.append(Gc.node[i]['label'] + 1)
-        elif nodecolor == 'feat' and 'feat' in Gc.node[i]:
-            feat = Gc.node[i]['feat'].detach().numpy()
+        elif nodecolor == 'label' and 'label' in Gc.nodes[i]:
+            node_colors.append(Gc.nodes[i]['label'] + 1)
+        elif nodecolor == 'feat' and 'feat' in Gc.nodes[i]:
+            feat = Gc.nodes[i]['feat'].detach().numpy()
             # idx with pos val in 1D array
             for j in range(len(feat)):
                 if feat[j] != 0:
@@ -230,3 +233,53 @@ def log_graph(writer, Gc, name, epoch=-1, identify_self=True, nodecolor='label',
 
     img = tensorboardX.utils.figure_to_image(fig)
     writer.add_image(name, img, epoch)
+
+
+def subgraph2key(args, denoise_graph, pred_loss):
+    key = []
+    edges = list(denoise_graph.edges)
+    for edge in edges:
+        class0 = denoise_graph.nodes[edge[0]]['feat'].data.numpy().nonzero()[0][0]
+        class1 = denoise_graph.nodes[edge[1]]['feat'].data.numpy().nonzero()[0][0]
+        if class0 > class1:
+            key.append(args.edge_dict[(class1,class0)])
+        else:
+            key.append(args.edge_dict[(class0,class1)])
+    
+    filename = 'keylog'
+    if args.mc_idx != -1:
+        filename += '_' + str(args.mc_idx) + '+'
+    elif args.mc_sidx != -1 and args.mc_eidx != -1:
+        filename += '_' + str(args.mc_sidx) + '-' + str(args.mc_eidx)
+    
+    with open(os.path.join(args.logdir, gen_explainer_prefix(args), filename), 'a+') as f:
+        writer = csv.writer(f)
+        if pred_loss < 0.69:
+            writer.writerow(key)
+        else:
+            writer.writerow(['False']+key)
+    return key
+
+
+def keylog2keys(args):
+    filepath = os.path.join(args.logdir, gen_explainer_prefix(args))
+    data = list(csv.reader(open(filepath+'/keylog', 'r')))
+
+    cands = {}
+    lCands = []  # [{(,),(,)...},{...},...]
+    candkeys = [row for row in data if row[0]!='False']
+    print('Remove {}/{} keys whose pred_loss are more than 0.69.'.format(len(data)-len(candkeys), len(data)))
+    for candk in candkeys:
+        cand = set(candk)
+        if cand not in lCands:
+            cands[len(lCands)] = 1
+            lCands.append(cand)
+        else:
+            idx = lCands.index(cand)
+            cands[idx] += 1
+    cands = sorted(cands.items(), key = lambda kv:(kv[1], kv[0]), reverse = True)
+    with open(filepath+'/keys', 'w', newline="") as f:
+        writer = csv.writer(f)
+        for key in cands:
+            writer.writerow(list(lCands[key[0]])+[key[1]])
+        writer.writerow(['Remove {}/{} keys whose pred_loss are more than 0.69.'.format(len(data)-len(candkeys), len(data))])
